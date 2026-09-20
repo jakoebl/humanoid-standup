@@ -99,7 +99,7 @@ class EventCfg:
     reset_robot = EventTerm(
         func=mdp.reset_to_reference,
         mode="reset",
-        params={"random_start": False},
+        params={"random_start": True},
     )
 
 @configclass
@@ -140,19 +140,22 @@ class RewardsCfg:
 class TerminationsCfg:
     """Termination terms for the MDP."""
 
-    # (1) Time out
-    time_out = DoneTerm(func=mdp.time_out, time_out=True)
     reference_complete = DoneTerm(func=mdp.reference_complete)
     
     # The stand-up reference includes intentional torso/limb ground contact.
     ee_deviation = DoneTerm(
         func=mdp.end_effector_deviation,
         params={
-            "threshold": 1.0,
+            "threshold": 0.25,
             "asset_cfg": SceneEntityCfg(
                 "robot", body_names=list(Reference.END_EFFECTOR_NAMES), preserve_order=True,
             ),
         },
+    )
+
+    com_deviation = DoneTerm(
+        func=mdp.com_deviation,
+        params={"threshold": 0.25, "asset_cfg": SceneEntityCfg("robot")},
     )
 
 

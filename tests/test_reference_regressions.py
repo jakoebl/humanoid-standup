@@ -132,3 +132,34 @@ data.body_com_lin_vel_w = math_utils.quat_apply(body_yaw,data.body_com_lin_vel_w
 data.body_link_ang_vel_w = math_utils.quat_apply(body_yaw,data.body_link_ang_vel_w)
 torch.testing.assert_close(observations.deepmimic_state(env),state,atol=1e-4,rtol=1e-5)
 print('PASS: 452-value DeepMimic layout, body ordering, finger exclusion, no target leakage, heading/translation invariance')
+
+
+# COM failure uses mass weighting, environment-local coordinates, and RSI frame offsets.
+com_scene = Scene()
+com_scene.env_origins = torch.tensor([[0., 0., 0.], [10., -4., 2.], [-8., 3., 1.], [2., 5., -3.]])
+com_env = types.SimpleNamespace(
+    scene=com_scene, step_dt=ref.dt,
+    episode_length_buf=torch.tensor([0, 1, 2, 3]),
+    reference_start_frames=torch.tensor([5, 10, 15, 20]),
+)
+original_com = ref.com_pos
+try:
+    # Exactly representable targets make the strict threshold boundary deterministic.
+    ref.com_pos = torch.zeros_like(original_com)
+    ref.com_pos[torch.tensor([5, 11, 17, 23], device=ref.device)] = 2.0
+    target = torch.full((4, 3), 2.0)
+    offsets = torch.tensor([[0., 0., 0.], [.5, 0., 0.], [0., 0., .75], [.375, .375, 0.]])
+    center = target + offsets + com_scene.env_origins
+    # Unequal masses: weighted offsets cancel; an unweighted mean would fail.
+    body_com = torch.stack((center + torch.tensor([3., 0., 0.]), center - torch.tensor([1., 0., 0.])), dim=1)
+    com_scene['robot'] = types.SimpleNamespace(
+        device='cpu', data=types.SimpleNamespace(
+            body_com_pos_w=body_com, default_mass=torch.tensor([[1., 3.]]).expand(4, -1),
+        ),
+    )
+    result = terms.com_deviation(com_env, threshold=.5, asset_cfg=SceneEntityCfg('robot'))
+    assert result.dtype == torch.bool and result.shape == (4,)
+    assert result.tolist() == [False, False, True, True]
+finally:
+    ref.com_pos = original_com
+print('PASS: COM deviation mass weighting, environment origins, RSI offsets, strict threshold and 3D distance')
