@@ -14,10 +14,9 @@ It allows you to develop in an isolated environment, outside of the core Isaac L
 
 Open `humanoid-standup.code-workspace` in VS Code to display the project name.
 
-After renaming the package, reinstall it in your Isaac Lab Python environment:
+Install the package in your Isaac Lab Python environment:
 
 ```bash
-python -m pip uninstall trajectory_tracker
 python -m pip install -e source/humanoid_standup
 ```
 
@@ -39,7 +38,7 @@ python -m pip install -e source/humanoid_standup
 
     - Listing the available tasks:
 
-        Note: It the task name changes, it may be necessary to update the search pattern `"Template-"`
+        Note: It the task name changes, it may be necessary to update the search pattern `"Humanoid-Standup"`
         (in the `scripts/list_envs.py` file) so that it can be listed.
 
         ```bash

@@ -32,7 +32,7 @@ from isaaclab_assets.robots.unitree import G1_29DOF_CFG  # isort:skip
 
 
 @configclass
-class TrajectoryTrackerSceneCfg(InteractiveSceneCfg):
+class HumanoidStandupSceneCfg(InteractiveSceneCfg):
     """Ground-plane scene for G1 motion imitation."""
 
     # ground plane
@@ -162,9 +162,9 @@ class TerminationsCfg:
 
 
 @configclass
-class TrajectoryTrackerEnvCfg(ManagerBasedRLEnvCfg):
+class HumanoidStandupEnvCfg(ManagerBasedRLEnvCfg):
     # Scene settings
-    scene: TrajectoryTrackerSceneCfg = TrajectoryTrackerSceneCfg(num_envs=4096, env_spacing=4.0)
+    scene: HumanoidStandupSceneCfg = HumanoidStandupSceneCfg(num_envs=4096, env_spacing=4.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()

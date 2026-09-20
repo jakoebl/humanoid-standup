@@ -14,7 +14,7 @@ import torch
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Play a trajectory reference motion in Isaac Sim.")
-parser.add_argument("--task", type=str, default="Template-Trajectory-Tracker-v0")
+parser.add_argument("--task", type=str, default="Humanoid-Standup")
 parser.add_argument("--num_envs", type=int, default=1)
 parser.add_argument(
     "--csv",
