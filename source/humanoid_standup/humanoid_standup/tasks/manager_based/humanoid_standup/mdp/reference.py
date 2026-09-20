@@ -332,4 +332,4 @@ class Reference:
 
 
 
-REFERENCE = Reference(path="/workspace/trajectory_tracker/data/processed/stand_up_lying_R_002__A472_M.csv", dt=1.0 / 120.0)
+REFERENCE = Reference(path=Path(__file__).resolve().parents[7] / "data/processed/stand_up_lying_R_002__A472_M.csv", dt=1.0 / 120.0)

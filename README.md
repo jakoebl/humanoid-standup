@@ -1,4 +1,4 @@
-# Template for Isaac Lab Projects
+# Humanoid Standup
 
 ## Overview
 
@@ -12,6 +12,15 @@ It allows you to develop in an isolated environment, outside of the core Isaac L
 
 **Keywords:** extension, template, isaaclab
 
+Open `humanoid-standup.code-workspace` in VS Code to display the project name.
+
+After renaming the package, reinstall it in your Isaac Lab Python environment:
+
+```bash
+python -m pip uninstall trajectory_tracker
+python -m pip install -e source/humanoid_standup
+```
+
 ## Installation
 
 - Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
@@ -23,7 +32,8 @@ It allows you to develop in an isolated environment, outside of the core Isaac L
 
     ```bash
     # use 'PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-    python -m pip install -e source/deleteme
+    python -m pip install -e source/humanoid_standup
+    ```
 
 - Verify that the extension is correctly installed by:
 
@@ -74,7 +84,7 @@ This helps in indexing all the python modules for intelligent suggestions while 
 
 ### Setup as Omniverse Extension (Optional)
 
-We provide an example UI extension that will load upon enabling your extension defined in `source/deleteme/deleteme/ui_extension_example.py`.
+We provide an example UI extension that will load upon enabling your extension defined in `source/humanoid_standup/humanoid_standup/ui_extension_example.py`.
 
 To enable your extension, follow these steps:
 
@@ -114,7 +124,7 @@ In this case, add the path to your extension in `.vscode/settings.json` under th
 ```json
 {
     "python.analysis.extraPaths": [
-        "<path-to-ext-repo>/source/deleteme"
+        "<path-to-ext-repo>/source/humanoid_standup"
     ]
 }
 ```

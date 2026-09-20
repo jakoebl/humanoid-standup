@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Installation script for the 'trajectory_tracker' python package."""
+"""Installation script for the 'humanoid_standup' python package."""
 
 import os
 
@@ -23,8 +23,8 @@ INSTALL_REQUIRES = [
 
 # Installation operation
 setup(
-    name="trajectory_tracker",
-    packages=["trajectory_tracker"],
+    name="humanoid_standup",
+    packages=["humanoid_standup"],
     author=EXTENSION_TOML_DATA["package"]["author"],
     maintainer=EXTENSION_TOML_DATA["package"]["maintainer"],
     url=EXTENSION_TOML_DATA["package"]["repository"],

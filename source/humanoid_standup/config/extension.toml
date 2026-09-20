@@ -7,11 +7,11 @@ version = "0.1.0"
 category = "isaaclab"
 readme  = "README.md"
 
-title = "Extension Template"
+title = "Humanoid Standup"
 author = "Isaac Lab Project Developers"
 maintainer = "Isaac Lab Project Developers"
 description="Extension Template for Isaac Lab"
-repository = "https://github.com/isaac-sim/IsaacLab.git"
+repository = "https://github.com/jakoebl/humanoid-standup.git"
 keywords = ["extension", "template", "isaaclab"]
 
 [dependencies]
@@ -23,7 +23,7 @@ keywords = ["extension", "template", "isaaclab"]
 # NOTE: Add additional dependencies here
 
 [[python.module]]
-name = "deleteme"
+name = "humanoid_standup"
 
 [isaac_lab_settings]
 # TODO: Uncomment and list any apt dependencies here.

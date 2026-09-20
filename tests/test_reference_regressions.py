@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-MDP = ROOT / 'source/trajectory_tracker/trajectory_tracker/tasks/manager_based/trajectory_tracker/mdp'
+MDP = ROOT / 'source/humanoid_standup/humanoid_standup/tasks/manager_based/humanoid_standup/mdp'
 for path in ROOT.rglob('*.py'):
     ast.parse(path.read_text(), filename=str(path))
 

@@ -38,9 +38,9 @@ import isaaclab.sim as sim_utils
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 
 import isaaclab_tasks  # noqa: F401
-import trajectory_tracker.tasks  # noqa: F401
+import humanoid_standup.tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
-from trajectory_tracker.tasks.manager_based.trajectory_tracker.mdp.reference import REFERENCE
+from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import REFERENCE
 
 
 def load_reference_positions(path: Path) -> torch.Tensor:
