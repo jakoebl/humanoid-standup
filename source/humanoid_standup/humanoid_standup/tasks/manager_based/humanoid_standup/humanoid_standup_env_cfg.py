@@ -81,8 +81,8 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Observations for policy group."""
 
-        deepmimic_state = ObsTerm(
-            func=mdp.deepmimic_state,
+        proprioceptive_state = ObsTerm(
+            func=mdp.proprioceptive_state,
             params={"asset_cfg": SceneEntityCfg("robot")},
         )
         def __post_init__(self) -> None:

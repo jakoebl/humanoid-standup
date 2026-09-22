@@ -145,7 +145,7 @@ Some examples of packages that can likely be excluded are:
 ## DeepMimic-style stand-up training
 
 The task uses synchronized random reference-state initialization: root pose,
-root world velocity, joint state, observation phase, rewards, and termination
+root world velocity, joint state, rewards, and termination
 share one per-environment starting frame. The RSL-RL runner must keep
 `init_at_random_ep_len=False`. For evaluation from the beginning of the clip,
 set `env_cfg.events.reset_robot.params["random_start"] = False` before creating
@@ -165,16 +165,11 @@ Configuration compensates Isaac Lab's timestep multiplication so a perfect
 step receives reward 1. The G1 PD action scaling remains 0.25 about its default
 joint pose; it is an action parameterization, not a residual on the reference.
 
-Observations match the released DeepMimic `CtController` raw feature layout:
-scalar phase, root height, per-body position/normal/tangent, followed by
-per-body linear/angular velocity. Six rotation features match the code rather
-than the paper's quaternion description. An explicit list selects pelvis plus
-29 G1 joint child bodies (452 values), excluding palms and all fingers.
-No reference-target or joint-coordinate features are included. Positions and
-linear velocities use body COMs; orientations use link frames. Features use
-the root heading frame with z-up instead of DeepMimic's y-up convention.
-The feature schema matches; the dimension differs with the robot skeleton,
-and DeepMimic's separate input normalization is not reproduced here.
+Observations contain only proprioceptive information (64 values): 29 joint
+positions and 29 joint velocities in action order, followed by pelvis angular
+velocity and projected gravity expressed in the pelvis frame. Finger joints,
+reference phase/targets, root height, global pose, and linear velocities are
+excluded.
 Networks use ReLU. This
 changes observation dimensions and training semantics: train a fresh policy
 rather than resuming old checkpoints. G1 revolute joints, actuator limits,

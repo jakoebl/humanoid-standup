@@ -77,61 +77,32 @@ assert terms.reference_complete(env)[ids].all()
 assert (ref.frame_ids_for_env(env)[ids]==ref.num_frames-1).all()
 print('PASS: Python syntax, quaternion world velocities/sign invariance, noncyclic sampling, pre-reset phase, synchronized partial RSI, deterministic reset, clip completion')
 
-# Exercise the actual Isaac Lab quaternion math without launching the simulator.
-math_path = ROOT.parent / 'isaaclab/source/isaaclab/isaaclab/utils/math.py'
-sys.modules['isaaclab.utils'] = types.ModuleType('isaaclab.utils')
-math_utils = load('isaaclab.utils.math', math_path)
+# Only encoders and local inertial signals are available; world/reference reads fail.
 observations = load('tracker_test.observations', MDP/'observations.py')
-names = observations.OBSERVATION_BODY_NAMES
-assert len(names) == len(set(names)) == 30
-assert not any('hand' in name or 'finger' in name for name in names)
-# Interleave excluded bodies to detect accidental slicing or ordering mistakes.
-all_names = ['left_hand_index_0_link', *reversed(names), 'right_hand_thumb_2_link']
+names = list(ref.JOINT_NAMES)
+all_names = ['finger_joint', *reversed(names)]
 count = len(all_names)
 data = types.SimpleNamespace(
-    root_link_pos_w=torch.tensor([[3., 4., 2.]]),
-    root_link_quat_w=torch.tensor([[1., 0., 0., 0.]]),
-    body_com_pos_w=torch.arange(count * 3).reshape(1, count, 3).float(),
-    body_link_quat_w=torch.tensor([1., 0., 0., 0.]).repeat(1, count, 1),
-    body_com_lin_vel_w=torch.arange(count * 3).reshape(1, count, 3).float() + 100,
-    body_link_ang_vel_w=torch.arange(count * 3).reshape(1, count, 3).float() + 200,
+    joint_pos=torch.arange(2*count).reshape(2,count).float(),
+    joint_vel=torch.arange(2*count).reshape(2,count).float() + 100,
+    root_ang_vel_b=torch.tensor([[1.,2.,3.], [-1.,-2.,-3.]]),
+    projected_gravity_b=torch.tensor([[0.,0.,-1.], [1.,0.,0.]]),
 )
 asset = types.SimpleNamespace(data=data)
-asset.find_bodies = lambda requested, preserve_order: ([all_names.index(n) for n in requested], requested)
-scene = Scene(robot=asset)
-scene.env_origins = torch.tensor([[3., 4., 0.]])
-env = types.SimpleNamespace(scene=scene, step_dt=ref.dt, episode_length_buf=torch.tensor([0]))
-state = observations.deepmimic_state(env)
-assert state.shape == (1, 452)
-assert state[0, 0] == 0 and state[0, 1] == 2
-# Independent expected per-body packing at identity heading.
+asset.find_joints = lambda requested, preserve_order: ([all_names.index(n) for n in requested], requested)
+env = types.SimpleNamespace(scene=Scene(robot=asset))
+state = observations.proprioceptive_state(env)
+assert state.shape == (2,64)
 for i, name in enumerate(names):
     j = all_names.index(name)
-    pose_start, vel_start = 2 + 9*i, 2 + 9*len(names) + 6*i
-    expected_pose = torch.cat((data.body_com_pos_w[0,j]-data.root_link_pos_w[0], torch.tensor([0.,0.,1.,1.,0.,0.])))
-    torch.testing.assert_close(state[0,pose_start:pose_start+9], expected_pose)
-    torch.testing.assert_close(state[0,vel_start:vel_start+6], torch.cat((data.body_com_lin_vel_w[0,j],data.body_link_ang_vel_w[0,j])))
-# Finger pose and velocity changes must have absolutely no direct observation effect.
-for field in ('body_com_pos_w','body_link_quat_w','body_com_lin_vel_w','body_link_ang_vel_w'):
-    getattr(data,field)[:,[0,count-1]] = float('nan')
-torch.testing.assert_close(observations.deepmimic_state(env), state, rtol=0, atol=0)
-# Reference targets are not read: phase is the only reference-dependent input.
-old_get_root_state = ref.get_root_state
-ref.get_root_state = lambda *_: (_ for _ in ()).throw(AssertionError('Reference target leaked into observations'))
-torch.testing.assert_close(observations.deepmimic_state(env), state)
-ref.get_root_state = old_get_root_state
-# A common yaw and horizontal translation must leave the local state unchanged.
-yaw = torch.tensor([[2**-0.5, 0., 0., 2**-0.5]])
-shift = torch.tensor([[11., -7., 0.]])
-data.root_link_pos_w = math_utils.quat_apply(yaw, data.root_link_pos_w) + shift
-data.root_link_quat_w = yaw
-body_yaw = yaw[:,None,:].expand(1,count,4)
-data.body_com_pos_w = math_utils.quat_apply(body_yaw,data.body_com_pos_w) + shift[:,None,:]
-data.body_link_quat_w = math_utils.quat_mul(body_yaw,data.body_link_quat_w)
-data.body_com_lin_vel_w = math_utils.quat_apply(body_yaw,data.body_com_lin_vel_w)
-data.body_link_ang_vel_w = math_utils.quat_apply(body_yaw,data.body_link_ang_vel_w)
-torch.testing.assert_close(observations.deepmimic_state(env),state,atol=1e-4,rtol=1e-5)
-print('PASS: 452-value DeepMimic layout, body ordering, finger exclusion, no target leakage, heading/translation invariance')
+    torch.testing.assert_close(state[:,i],data.joint_pos[:,j])
+    torch.testing.assert_close(state[:,29+i],data.joint_vel[:,j])
+torch.testing.assert_close(state[:,58:61],data.root_ang_vel_b)
+torch.testing.assert_close(state[:,61:64],data.projected_gravity_b)
+data.joint_pos[:,0] = float('nan')
+data.joint_vel[:,0] = float('nan')
+torch.testing.assert_close(observations.proprioceptive_state(env),state,rtol=0,atol=0)
+print('PASS: proprioceptive layout, joint ordering, finger exclusion, no world/reference inputs')
 
 
 # COM failure uses mass weighting, environment-local coordinates, and RSI frame offsets.
