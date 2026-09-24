@@ -162,7 +162,13 @@ Control runs at 30 Hz over 120 Hz physics. The pose reward combines root
 quaternion error with wrapped revolute-joint angle errors in one exponential,
 weighted 0.65; velocity, end-effector, and COM weights are 0.10/0.15/0.10.
 Configuration compensates Isaac Lab's timestep multiplication so a perfect
-step receives reward 1. The G1 PD action scaling remains 0.25 about its default
+step receives tracking reward 1 before penalties. An action magnitude penalty
+subtracts `0.001 * sum(action ** 2)` per control step, using raw policy actions
+before joint-position scaling. An action-rate penalty also subtracts
+`0.005 * sum((action - previous_action) ** 2)` per control step to discourage
+rapid target oscillations. This is an initial tuning value: evaluate endpoint
+jitter and stand-up tracking after further training. Reward changes do not alter
+existing checkpoint behavior during playback. The G1 PD action scaling remains 0.25 about its default
 joint pose; it is an action parameterization, not a residual on the reference.
 
 Observations contain only proprioceptive information (64 values): 29 joint

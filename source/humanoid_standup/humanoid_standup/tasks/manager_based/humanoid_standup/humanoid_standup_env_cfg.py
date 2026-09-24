@@ -136,6 +136,13 @@ class RewardsCfg:
         params={"asset_cfg": SceneEntityCfg("robot"), "scale": 10.0},
     )
 
+    # Per-step cost on raw policy actions, before joint-position scaling.
+    action_penalty = RewTerm(func=mdp.action_l2, weight=-0.001)
+
+    # Penalize rapid changes in raw joint targets; compensated to a per-step cost below.
+    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
+
+
 @configclass
 class TerminationsCfg:
     """Termination terms for the MDP."""
