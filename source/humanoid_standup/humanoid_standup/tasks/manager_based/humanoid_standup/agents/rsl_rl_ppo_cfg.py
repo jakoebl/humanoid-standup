@@ -11,7 +11,7 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 @configclass
 class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 16
-    max_iterations = 5000
+    max_iterations = 20000
     save_interval = 100
     experiment_name = "humanoid_standup"
     policy = RslRlPpoActorCriticCfg(

@@ -211,6 +211,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
         runner.load(resume_path)
+        # RSL-RL checkpoints store learning iteration, but not environment counters.
+        # Restore the mass schedule before resetting every environment for rollout.
+        env.unwrapped.mass_curriculum_step_offset = (
+            runner.current_learning_iteration * agent_cfg.num_steps_per_env
+        )
+        env.reset()
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)

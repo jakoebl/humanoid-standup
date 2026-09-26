@@ -186,3 +186,97 @@ CPU regression checks (use a Python environment with NumPy and PyTorch):
 ```sh
 python tests/test_reference_regressions.py
 ```
+
+### Verify processed COM and end-effector targets
+
+Read positions from PhysX at every reference pose (all frames, including the
+lying and standing portions):
+
+```sh
+python scripts/play_reference.py --check-kinematics --headless --device cpu
+```
+
+Use the Isaac Sim Python environment (or `/isaac-sim/python.sh` in this container).
+The check compares mass-weighted body COM positions and wrist/ankle link origins
+with the processed CSV, in meters relative to the environment origin. It refreshes
+kinematics without stepping dynamics, so gravity, contact and PD tracking errors
+do not affect the comparison. Non-reference joints retain their playback defaults.
+Omit `--headless` to render the checked poses.
+
+`--ee-tolerance` and `--com-tolerance` default to 0.001 m. Measurements are saved to
+`outputs/reference_kinematics_check.csv`, with mean/RMS/maximum errors, worst frame
+indices and pass/fail results in the adjacent JSON file. Change the destination
+with `--check-output`. `--csv` can select another processed target file, but its
+motion columns must match the configured reference. Failed checks return a nonzero
+exit status; source reference data is not modified.
+
+### Process reference targets using Isaac Sim
+
+Use the simulation-based processor to generate EE and COM targets from the same
+`G1_29DOF_CFG` asset used by training:
+
+```sh
+python scripts/precompute_reference_kinematics_sim.py \
+  data/unprocessed/stand_up_lying_R_002__A472_M.csv \
+  data/processed/stand_up_lying_R_002__A472_M.csv \
+  --headless --device cpu
+```
+
+In this container, replace `python` with `/isaac-sim/python.sh`. The explicit output
+path is created or replaced only after every frame succeeds; input and output
+must differ. The script works without an existing processed clip. It preserves
+motion values, accepts columns by name, and writes canonical motion/EE/COM column
+order for the training loader. Existing EE/COM columns are recomputed.
+
+Root translations are interpreted as centimeters and XYZ Euler/joint angles as
+degrees. Exported positions are meters. Each pose is written directly to PhysX,
+with no dynamics step; end effectors use link origins and COM uses every body's
+simulation mass and world COM position. Unspecified finger joints retain the
+robot's default pose, matching training resets and playback.
+
+For 30 FPS G1 clips containing headerless rows of `X Y Z QX QY QZ QW`
+followed by the same 29 joints, use quaternion mode (comma or whitespace separated):
+
+```sh
+/isaac-sim/python.sh scripts/precompute_reference_kinematics_sim.py \
+  path/to/clip.csv data/processed/clip.csv \
+  --input-format quaternion --headless --device cpu
+```
+
+This mode assumes root translation in meters and joint angles in radians; use
+`--translation-unit cm` and/or `--joint-unit deg` if needed. It normalizes root
+quaternions, converts them to XYZ Euler degrees, and converts motion units to the
+existing centimeters/degrees schema. Zero-order hold repeats each 30 FPS pose
+four times at 120 FPS, including the final pose, with sequential `Frame` indices
+starting at zero. EE/COM targets are then computed by the same simulation path.
+The default `--input-format legacy` preserves existing CSV behavior.
+
+To verify the output against the configured reference motion:
+
+```sh
+python scripts/play_reference.py --check-kinematics --headless --device cpu \
+  --csv data/processed/stand_up_lying_R_002__A472_M.csv
+```
+
+### Robot mass curriculum
+
+Training starts at 50% of the robot's original mass and ramps linearly to 100%
+over 80,000 control steps (5,000 PPO iterations at 16 steps per rollout). Configure
+`curriculum.robot_mass.params.initial_scale` and `ramp_steps` in the environment
+configuration. Steps are shared across environments, not summed across the batch.
+
+At each environment reset, every link—including fingers—receives the same scalar
+multiplying its original mass and inertia tensor. Scaling always uses the original
+asset values, so repeated resets do not compound it. Local COM offsets and relative
+link masses stay unchanged; consequently the whole-body COM at a given pose and
+the processed reference targets remain valid. Updates happen only on reset to
+avoid changing dynamics mid-episode; active episodes keep their previous scale.
+The curriculum manager logs the scheduled scale under `robot_mass`.
+
+Policy and reference playback disable the curriculum and use true mass. Resumed
+RSL-RL training restores schedule progress from the checkpoint's learning iteration
+multiplied by the configured rollout length, then resets all environments. This is
+an iteration-based approximation (keep the rollout length unchanged when resuming).
+Set `initial_scale=1.0` to train at full mass throughout.
+
+Regression check: `python tests/test_mass_curriculum.py`.

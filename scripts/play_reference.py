@@ -6,7 +6,10 @@
 """Play a reference motion clip directly in Isaac Sim."""
 
 import argparse
+import csv
+import json
 import time
+import traceback
 from pathlib import Path
 
 import numpy as np
@@ -25,7 +28,13 @@ parser.add_argument(
 parser.add_argument("--disable_fabric", action="store_true", default=False)
 parser.add_argument(
     "--check-kinematics", action="store_true",
-    help="Compare every frame's exported EE positions against Isaac Sim link origins, then exit.",
+    help="Compare every frame's COM and EE positions against PhysX, export measurements, then exit.",
+)
+parser.add_argument("--ee-tolerance", type=float, default=0.001, help="Maximum EE error in meters (default: 1 mm).")
+parser.add_argument("--com-tolerance", type=float, default=0.001, help="Maximum COM error in meters (default: 1 mm).")
+parser.add_argument(
+    "--check-output", type=Path, default=Path("outputs/reference_kinematics_check.csv"),
+    help="Per-frame measured/expected coordinates and errors; summary saved alongside as JSON.",
 )
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -142,6 +151,81 @@ def apply_reference_frame(env, frame_id: int) -> None:
     robot.write_root_state_to_sim(root_state, env_ids=env_ids)
 
 
+
+def check_kinematics(env, reference_positions: torch.Tensor, kinematics_csv: Path) -> None:
+    """Read PhysX FK at every exact reference pose, without integrating dynamics."""
+    if not all(np.isfinite(t) and t >= 0 for t in (args_cli.ee_tolerance, args_cli.com_tolerance)):
+        raise ValueError("Kinematics tolerances must be finite and nonnegative.")
+    # --csv supplies targets for the configured motion, not a different playback clip.
+    motion = np.atleast_2d(np.loadtxt(kinematics_csv, delimiter=",", skiprows=1))[:, :36]
+    configured = np.atleast_2d(np.loadtxt(REFERENCE.path, delimiter=",", skiprows=1))[:, :36]
+    if motion.shape != configured.shape or not np.allclose(motion, configured, rtol=0, atol=1e-5):
+        raise ValueError("Kinematics CSV motion columns do not match the reference being played.")
+    if not torch.isfinite(reference_positions).all():
+        raise ValueError("Kinematics CSV contains nonfinite positions.")
+
+    robot = env.unwrapped.scene["robot"]
+    body_ids, body_names = robot.find_bodies(REFERENCE.END_EFFECTOR_NAMES, preserve_order=True)
+    if list(body_names) != list(REFERENCE.END_EFFECTOR_NAMES):
+        raise ValueError(f"Could not resolve reference end effectors in order: {body_names}")
+    # Read the actual simulation masses, including every articulated body/finger.
+    masses = robot.root_physx_view.get_masses()[0].to(robot.device)
+    if not torch.isfinite(masses).all() or (masses < 0).any() or masses.sum() <= 0:
+        raise ValueError("Simulation body masses must be finite, nonnegative and have positive total mass.")
+    names = ["com", *body_names]
+    measured = []
+    for frame_id in range(REFERENCE.num_frames):
+        if not simulation_app.is_running():
+            raise RuntimeError(f"Simulation closed after {frame_id}/{REFERENCE.num_frames} frames.")
+        apply_reference_frame(env, frame_id)
+        env.unwrapped.sim.physics_sim_view.update_articulations_kinematic()
+        # Advance buffer timestamps, not physics, to guarantee fresh body pose reads.
+        robot.update(REFERENCE.dt)
+        origin = env.unwrapped.scene.env_origins[0]
+        com = (robot.data.body_com_pos_w[0] * masses[:, None]).sum(dim=0) / masses.sum()
+        ee = robot.data.body_link_pos_w[0, body_ids]
+        measured.append((torch.cat((com[None], ee), dim=0) - origin).cpu().numpy())
+        if not args_cli.headless:
+            env.unwrapped.sim.render()
+
+    actual = np.stack(measured)
+    expected = reference_positions.numpy().reshape(-1, len(names), 3)
+    if not np.isfinite(actual).all():
+        raise RuntimeError("Simulation returned nonfinite positions.")
+    errors = np.linalg.norm(actual - expected, axis=-1)
+    output = args_cli.check_output
+    if output.resolve() in (REFERENCE.path.resolve(), kinematics_csv.resolve()):
+        raise ValueError("Check output must not overwrite a reference CSV.")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["frame_index", "reference_frame", "time_s", "body",
+                         "sim_x", "sim_y", "sim_z", "csv_x", "csv_y", "csv_z", "error_m"])
+        for frame_id in range(REFERENCE.num_frames):
+            for index, name in enumerate(names):
+                writer.writerow([frame_id, REFERENCE.frames[frame_id].item(), frame_id * REFERENCE.dt, name,
+                                 *actual[frame_id, index], *expected[frame_id, index], errors[frame_id, index]])
+    summary = {"reference": str(REFERENCE.path), "targets": str(kinematics_csv),
+               "frames": REFERENCE.num_frames, "total_mass_kg": masses.sum().item(), "bodies": {}}
+    passed = True
+    for index, name in enumerate(names):
+        values = errors[:, index]
+        tolerance = args_cli.com_tolerance if index == 0 else args_cli.ee_tolerance
+        result = {"mean_error_m": float(values.mean()), "rms_error_m": float(np.sqrt(np.mean(values ** 2))),
+                  "max_error_m": float(values.max()), "worst_frame_index": int(values.argmax()),
+                  "tolerance_m": tolerance, "passed": bool(np.all(values <= tolerance))}
+        summary["bodies"][name] = result
+        passed = passed and result["passed"]
+        print(f"{name}: mean={result['mean_error_m']:.6f} m, RMS={result['rms_error_m']:.6f} m, "
+              f"max={result['max_error_m']:.6f} m at frame {result['worst_frame_index']} "
+              f"({'PASS' if result['passed'] else 'FAIL'})", flush=True)
+    summary["passed"] = passed
+    output.with_suffix(".json").write_text(json.dumps(summary, indent=2) + "\n")
+    print(f"Measurements: {output}; summary: {output.with_suffix('.json')}", flush=True)
+    if not passed:
+        raise RuntimeError("Reference kinematics failed tolerance checks; see exported measurements.")
+
+
 def main() -> None:
     env_cfg = parse_env_cfg(
         args_cli.task,
@@ -149,6 +233,8 @@ def main() -> None:
         num_envs=args_cli.num_envs,
         use_fabric=not args_cli.disable_fabric,
     )
+    # Evaluate and validate reference kinematics at the true robot mass.
+    env_cfg.curriculum.robot_mass = None
     env = gym.make(args_cli.task, cfg=env_cfg)
     env.reset()
 
@@ -172,20 +258,7 @@ def main() -> None:
         raise ValueError("The simulation step must be at least as large as the reference timestep.")
     try:
         if args_cli.check_kinematics:
-            robot = env.unwrapped.scene["robot"]
-            body_ids, body_names = robot.find_bodies(REFERENCE.END_EFFECTOR_NAMES, preserve_order=True)
-            if body_names != REFERENCE.END_EFFECTOR_NAMES:
-                raise ValueError(f"Could not resolve reference end effectors in order: {body_names}")
-            max_errors = torch.zeros(len(body_ids), device=robot.device)
-            for check_frame in range(REFERENCE.num_frames):
-                apply_reference_frame(env, check_frame)
-                # Explicitly refresh PhysX FK even with rendering/fabric disabled.
-                env.unwrapped.sim.physics_sim_view.update_articulations_kinematic()
-                actual = robot.data.body_link_pos_w[0, body_ids] - env.unwrapped.scene.env_origins[0]
-                expected = reference_positions[check_frame, 3:].to(robot.device).reshape(-1, 3)
-                max_errors = torch.maximum(max_errors, torch.linalg.vector_norm(actual - expected, dim=-1))
-            for name, error in zip(body_names, max_errors.tolist()):
-                print(f"{name}: maximum position error = {error:.6f} m", flush=True)
+            check_kinematics(env, reference_positions, kinematics_csv)
             return
 
         while simulation_app.is_running():
@@ -208,5 +281,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
-    simulation_app.close()
+    try:
+        main()
+    except Exception:
+        traceback.print_exc()
+        # Kit shutdown can terminate Python before a pending exception propagates.
+        simulation_app.app.post_quit(1)
+        raise
+    finally:
+        simulation_app.close()

@@ -6,6 +6,7 @@
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -103,6 +104,16 @@ class EventCfg:
     )
 
 @configclass
+class CurriculumCfg:
+    """Restore full robot mass over the first 5,000 default PPO iterations."""
+
+    robot_mass = CurrTerm(
+        func=mdp.robot_mass_curriculum,
+        params={"initial_scale": 0.5, "ramp_steps": 240_000},
+    )
+
+
+@configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
     joint_position_tracking = RewTerm(
@@ -119,7 +130,7 @@ class RewardsCfg:
 
     end_effector_tracking = RewTerm(
         func=mdp.end_effector_pos_target_exp,
-        weight=0.15,
+        weight=1.5,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
@@ -137,10 +148,10 @@ class RewardsCfg:
     )
 
     # Per-step cost on raw policy actions, before joint-position scaling.
-    action_penalty = RewTerm(func=mdp.action_l2, weight=-0.001)
+    action_penalty = RewTerm(func=mdp.action_l2, weight=-0.0005)
 
     # Penalize rapid changes in raw joint targets; compensated to a per-step cost below.
-    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
+    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.0025)
 
 
 @configclass
@@ -150,10 +161,11 @@ class TerminationsCfg:
     reference_complete = DoneTerm(func=mdp.reference_complete)
     
     # The stand-up reference includes intentional torso/limb ground contact.
+
     ee_deviation = DoneTerm(
         func=mdp.end_effector_deviation,
         params={
-            "threshold": 0.25,
+            "threshold": 0.75,
             "asset_cfg": SceneEntityCfg(
                 "robot", body_names=list(Reference.END_EFFECTOR_NAMES), preserve_order=True,
             ),
@@ -162,7 +174,7 @@ class TerminationsCfg:
 
     com_deviation = DoneTerm(
         func=mdp.com_deviation,
-        params={"threshold": 0.25, "asset_cfg": SceneEntityCfg("robot")},
+        params={"threshold": 0.5, "asset_cfg": SceneEntityCfg("robot")},
     )
 
 
@@ -180,6 +192,7 @@ class HumanoidStandupEnvCfg(ManagerBasedRLEnvCfg):
     actions: ActionsCfg = ActionsCfg()
     events: EventCfg = EventCfg()
     # MDP settings
+    curriculum: CurriculumCfg = CurriculumCfg()
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
 
