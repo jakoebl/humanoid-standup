@@ -134,3 +134,35 @@ try:
 finally:
     ref.com_pos = original_com
 print('PASS: COM deviation mass weighting, environment origins, RSI offsets, strict threshold and 3D distance')
+
+# Playback must select the requested motion before config construction, preserving
+# the object already imported by managers. Extract main to avoid launching Kit.
+import tempfile
+playback_tree = ast.parse((ROOT / 'scripts/play_reference.py').read_text())
+playback_main = next(node for node in playback_tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+class ConfigReached(Exception):
+    pass
+with tempfile.TemporaryDirectory() as directory:
+    clip = Path(directory) / 'other_clip.csv'
+    motion = np.loadtxt(ref.path, delimiter=',', skiprows=1)[:3].copy()
+    motion[:, 1] += 100.0
+    np.savetxt(clip, motion, delimiter=',', header=ref.path.open().readline().strip(), comments='')
+    selected = reference.Reference(ref.path, ref.dt)
+    shared = selected
+    def inspect_config(*args, **kwargs):
+        assert selected is shared
+        assert selected.path == clip and selected.num_frames == 3
+        np.testing.assert_allclose(selected.root_pos[:, 0].numpy(), motion[:, 1] / 100, atol=1e-6)
+        assert selected.com_pos.shape == (3, 3)
+        raise ConfigReached
+    namespace = dict(REFERENCE=selected, args_cli=types.SimpleNamespace(
+        csv=clip, task='Humanoid-Standup', device='cpu', num_envs=1, disable_fabric=False,
+    ), parse_env_cfg=inspect_config)
+    exec(compile(ast.Module(body=[playback_main], type_ignores=[]), 'play_reference.py', 'exec'), namespace)
+    try:
+        namespace['main']()
+    except ConfigReached:
+        pass
+    else:
+        raise AssertionError('Playback did not construct its config')
+print('PASS: playback CSV selects motion in place before environment configuration')

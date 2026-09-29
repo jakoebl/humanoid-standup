@@ -8,6 +8,8 @@
 import argparse
 import csv
 import json
+import os
+import tempfile
 import time
 import traceback
 from pathlib import Path
@@ -23,7 +25,7 @@ parser.add_argument(
     "--csv",
     type=Path,
     default=None,
-    help="CSV created by precompute_reference_kinematics.py.",
+    help="Motion CSV to play, including precomputed COM and end-effector positions.",
 )
 parser.add_argument("--disable_fabric", action="store_true", default=False)
 parser.add_argument(
@@ -36,8 +38,18 @@ parser.add_argument(
     "--check-output", type=Path, default=Path("outputs/reference_kinematics_check.csv"),
     help="Per-frame measured/expected coordinates and errors; summary saved alongside as JSON.",
 )
+parser.add_argument("--record", type=Path, help="Record one pass to an MP4 file, then exit.")
+parser.add_argument("--video-fps", type=int, choices=(30, 60, 120), default=120)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
+if args_cli.record is not None:
+    if args_cli.check_kinematics or args_cli.num_envs != 1:
+        parser.error("Recording requires one environment and cannot be combined with --check-kinematics.")
+    if args_cli.record.suffix.lower() != ".mp4":
+        parser.error("Recording output must have an .mp4 extension.")
+    if args_cli.record.exists():
+        parser.error(f"Output already exists: {args_cli.record}")
+    args_cli.enable_cameras = True
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -50,6 +62,68 @@ import isaaclab_tasks  # noqa: F401
 import humanoid_standup.tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
 from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import REFERENCE
+
+
+class PlaybackControls:
+    """Select exact CSV frames while keeping the viewport interactive."""
+
+    def __init__(self, num_frames, dt, clip_name):
+        import omni.ui as ui
+
+        self.num_frames, self.dt = num_frames, dt
+        self.frame_id = 0
+        self.playing = True
+        self._syncing = False
+        self._anchor_time = time.perf_counter()
+        self._anchor_frame = 0
+        self.window = ui.Window("Reference Playback", width=520, height=180)
+        with self.window.frame:
+            with ui.VStack(spacing=6):
+                ui.Label(clip_name)
+                with ui.HStack(height=25, spacing=6):
+                    ui.Button("Previous frame", clicked_fn=lambda: self.seek(self.frame_id - 1))
+                    self.play_button = ui.Button("Pause", clicked_fn=self.toggle)
+                    ui.Button("Next frame", clicked_fn=lambda: self.seek(self.frame_id + 1))
+                self.model = ui.SimpleIntModel(0)
+                ui.IntSlider(model=self.model, min=0, max=num_frames - 1, height=22)
+                with ui.HStack(height=22, spacing=6):
+                    ui.Label("Frame (from 0)", width=110)
+                    ui.IntField(model=self.model, width=90)
+                    self.status = ui.Label("")
+                ui.Label("Scrubbing or stepping pauses playback. Play loops the clip.", height=20)
+        self.model.add_value_changed_fn(self._on_frame_changed)
+        self._sync()
+
+    def _sync(self):
+        self._syncing = True
+        try:
+            self.model.set_value(self.frame_id)
+            self.status.text = f"/ {self.num_frames - 1}    {self.frame_id * self.dt:.3f} s"
+            self.play_button.text = "Pause" if self.playing else "Play"
+        finally:
+            self._syncing = False
+
+    def _on_frame_changed(self, model):
+        if not self._syncing:
+            self.seek(model.as_int)
+
+    def seek(self, frame_id):
+        self.frame_id = max(0, min(self.num_frames - 1, frame_id))
+        self.playing = False
+        self._sync()
+
+    def toggle(self):
+        self.playing = not self.playing
+        self._anchor_frame = self.frame_id
+        self._anchor_time = time.perf_counter()
+        self._sync()
+
+    def advance(self):
+        if self.playing:
+            elapsed_frames = int((time.perf_counter() - self._anchor_time) / self.dt)
+            self.frame_id = (self._anchor_frame + elapsed_frames) % self.num_frames
+            self._sync()
+        return self.frame_id
 
 
 def load_reference_positions(path: Path) -> torch.Tensor:
@@ -156,7 +230,7 @@ def check_kinematics(env, reference_positions: torch.Tensor, kinematics_csv: Pat
     """Read PhysX FK at every exact reference pose, without integrating dynamics."""
     if not all(np.isfinite(t) and t >= 0 for t in (args_cli.ee_tolerance, args_cli.com_tolerance)):
         raise ValueError("Kinematics tolerances must be finite and nonnegative.")
-    # --csv supplies targets for the configured motion, not a different playback clip.
+    # Ensure marker targets describe the motion being played.
     motion = np.atleast_2d(np.loadtxt(kinematics_csv, delimiter=",", skiprows=1))[:, :36]
     configured = np.atleast_2d(np.loadtxt(REFERENCE.path, delimiter=",", skiprows=1))[:, :36]
     if motion.shape != configured.shape or not np.allclose(motion, configured, rtol=0, atol=1e-5):
@@ -226,7 +300,86 @@ def check_kinematics(env, reference_positions: torch.Tensor, kinematics_csv: Pat
         raise RuntimeError("Reference kinematics failed tolerance checks; see exported measurements.")
 
 
+
+def frame_recording_camera(env):
+    """Fit a padded sphere around all robot links into the video camera."""
+    from pxr import UsdGeom
+
+    sim = env.unwrapped.sim
+    robot = env.unwrapped.scene["robot"]
+    # Refresh pose buffers after writing the reference and updating PhysX FK.
+    robot.update(REFERENCE.dt)
+    positions = robot.data.body_link_pos_w[0].detach().cpu().numpy()
+    if not np.isfinite(positions).all():
+        raise RuntimeError("Cannot frame robot with nonfinite link positions.")
+    center = (positions.min(axis=0) + positions.max(axis=0)) / 2
+    # Include link geometry beyond joint origins, fingers and reference markers.
+    radius = max(1.2, float(np.linalg.norm(positions - center, axis=1).max()) + 0.35)
+    width, height = env.unwrapped.cfg.viewer.resolution
+    focal_length, horizontal_aperture = 24.0, 36.0
+    vertical_aperture = horizontal_aperture * height / width
+    half_fov = np.arctan(min(horizontal_aperture, vertical_aperture) / (2 * focal_length))
+    distance = 1.15 * radius / np.sin(half_fov)
+    direction = np.array([1.0, -1.0, 0.65])
+    direction /= np.linalg.norm(direction)
+    camera_path = env.unwrapped.cfg.viewer.cam_prim_path
+    camera = UsdGeom.Camera(sim.stage.GetPrimAtPath(camera_path))
+    camera.GetProjectionAttr().Set(UsdGeom.Tokens.perspective)
+    camera.GetFocalLengthAttr().Set(focal_length)
+    camera.GetHorizontalApertureAttr().Set(horizontal_aperture)
+    camera.GetVerticalApertureAttr().Set(vertical_aperture)
+    camera.GetHorizontalApertureOffsetAttr().Set(0.0)
+    camera.GetVerticalApertureOffsetAttr().Set(0.0)
+    sim.set_camera_view(eye=(center + direction * distance).tolist(),
+                        target=center.tolist(), camera_prim_path=camera_path)
+
+
+def record_reference(env, reference_positions, reference_markers, output, fps):
+    """Render one pass at fixed sample times without integrating physics."""
+    import imageio.v2 as imageio
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(suffix=".mp4", prefix=".recording-", dir=output.parent)
+    os.close(fd)
+    temporary = Path(temporary)
+    stride = round(1 / (fps * REFERENCE.dt))
+    frame_ids = range(0, REFERENCE.num_frames, stride)
+    try:
+        with imageio.get_writer(str(temporary), format="FFMPEG", mode="I", fps=fps,
+                                codec="libx264", pixelformat="yuv420p", macro_block_size=2) as writer:
+            for index, frame_id in enumerate(frame_ids):
+                if not simulation_app.is_running():
+                    raise RuntimeError("Simulation closed before recording finished.")
+                apply_reference_frame(env, frame_id)
+                show_reference_markers(reference_markers, reference_positions, frame_id,
+                                       env.unwrapped.scene.env_origins[0])
+                env.unwrapped.sim.physics_sim_view.update_articulations_kinematic()
+                frame_recording_camera(env)
+                if index == 0:
+                    # Create the RGB annotator, then warm up with the first pose held fixed.
+                    env.unwrapped.render()
+                    for _ in range(10):
+                        env.unwrapped.sim.render()
+                env.unwrapped.sim.render()
+                rgb = env.unwrapped.render(recompute=True)
+                if rgb is None or not rgb.size:
+                    raise RuntimeError("Isaac Sim returned an empty RGB frame.")
+                writer.append_data(rgb)
+                if index % fps == 0:
+                    print(f"Recording: {index + 1}/{len(frame_ids)} frames", flush=True)
+        # Publish only a completed file, and never overwrite an existing recording.
+        os.link(temporary, output)
+        print(f"Saved {output} ({len(frame_ids)} frames at {fps} FPS)", flush=True)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def main() -> None:
+    if args_cli.csv is not None:
+        # Managers import this shared object directly. Reload it in place before
+        # constructing the config so poses, targets and episode duration agree.
+        REFERENCE.__init__(path=args_cli.csv, dt=REFERENCE.dt, device=REFERENCE.device)
+
     env_cfg = parse_env_cfg(
         args_cli.task,
         device=args_cli.device,
@@ -235,7 +388,10 @@ def main() -> None:
     )
     # Evaluate and validate reference kinematics at the true robot mass.
     env_cfg.curriculum.robot_mass = None
-    env = gym.make(args_cli.task, cfg=env_cfg)
+    if args_cli.record is not None:
+        env_cfg.viewer.resolution = (1920, 1080)
+    env = gym.make(args_cli.task, cfg=env_cfg,
+                   render_mode="rgb_array" if args_cli.record is not None else None)
     env.reset()
 
     kinematics_csv = args_cli.csv
@@ -256,13 +412,24 @@ def main() -> None:
     frame_step = round((env.unwrapped.cfg.sim.dt * env.unwrapped.cfg.decimation) / REFERENCE.dt)
     if frame_step < 1:
         raise ValueError("The simulation step must be at least as large as the reference timestep.")
+    controls = None
     try:
         if args_cli.check_kinematics:
             check_kinematics(env, reference_positions, kinematics_csv)
             return
 
+        if args_cli.record is not None:
+            record_reference(env, reference_positions, reference_markers,
+                             args_cli.record, args_cli.video_fps)
+            return
+
+        if not args_cli.headless:
+            controls = PlaybackControls(REFERENCE.num_frames, REFERENCE.dt, kinematics_csv.name)
+
         while simulation_app.is_running():
             frame_start = time.perf_counter()
+            if controls is not None:
+                frame_id = controls.advance()
             apply_reference_frame(env, frame_id)
             show_reference_markers(
                 reference_markers,
@@ -275,8 +442,11 @@ def main() -> None:
             env.unwrapped.sim.physics_sim_view.update_articulations_kinematic()
             env.unwrapped.sim.render()
             time.sleep(max(0.0, frame_step * REFERENCE.dt - (time.perf_counter() - frame_start)))
-            frame_id = (frame_id + frame_step) % REFERENCE.num_frames
+            if controls is None:
+                frame_id = (frame_id + frame_step) % REFERENCE.num_frames
     finally:
+        if controls is not None:
+            controls.window.destroy()
         env.close()
 
 
