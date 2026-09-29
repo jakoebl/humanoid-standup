@@ -206,8 +206,10 @@ Omit `--headless` to render the checked poses.
 `--ee-tolerance` and `--com-tolerance` default to 0.001 m. Measurements are saved to
 `outputs/reference_kinematics_check.csv`, with mean/RMS/maximum errors, worst frame
 indices and pass/fail results in the adjacent JSON file. Change the destination
-with `--check-output`. `--csv` can select another processed target file, but its
-motion columns must match the configured reference. Failed checks return a nonzero
+with `--check-output`. `--csv path/to/processed_clip.csv` selects the motion and
+its marker targets together, for both playback and checking. Omit `--csv` to use
+the configured reference. Clips must use the reference timestep (120 FPS).
+Failed checks return a nonzero
 exit status; source reference data is not modified.
 
 ### Process reference targets using Isaac Sim
@@ -251,7 +253,15 @@ four times at 120 FPS, including the final pose, with sequential `Frame` indices
 starting at zero. EE/COM targets are then computed by the same simulation path.
 The default `--input-format legacy` preserves existing CSV behavior.
 
-To verify the output against the configured reference motion:
+To play another processed clip, use `python scripts/play_reference.py --csv path/to/processed_clip.csv`.
+The graphical viewer's **Reference Playback** panel has play/pause, a frame slider,
+previous/next frame buttons, and an editable frame number starting at zero.
+Scrubbing or stepping pauses on the exact CSV pose; press **Play** to resume looping.
+The camera stays interactive while paused. Steps use the reference's 120 FPS
+samples, including repeated poses in clips converted from 30 FPS. Controls are
+omitted in headless mode and during kinematics checks.
+
+To verify its targets, add `--check-kinematics` as below:
 
 ```sh
 python scripts/play_reference.py --check-kinematics --headless --device cpu \
@@ -280,3 +290,24 @@ an iteration-based approximation (keep the rollout length unchanged when resumin
 Set `initial_scale=1.0` to train at full mass throughout.
 
 Regression check: `python tests/test_mass_curriculum.py`.
+
+### Record a CSV reference clip
+
+Record one full pass of a processed CSV to a 1280×720 MP4:
+
+```sh
+/isaac-sim/python.sh record.py data/processed/standup_1_32.csv
+```
+
+The video is saved in `/workspace/humanoid_standup/vids/standup_1_32.mp4`. Recording runs headless
+by default; add `--gui` to show Isaac Sim. Use `--output path/to/video.mp4` for a
+custom destination. Existing recordings are never overwritten.
+
+The default `--fps 120` preserves every reference sample. `--fps 30` or
+`--fps 60` samples fewer poses while keeping the playback speed. Recording uses
+a camera that follows and frames all robot links with padding, plus the same
+COM/end-effector markers as reference playback. It writes exact
+CSV poses without stepping physics, and exits after one pass. Rendering can be
+slower than real time without changing the video's playback speed. Run with the
+Isaac Sim Python environment; RGB rendering still requires a compatible GPU in
+headless mode.

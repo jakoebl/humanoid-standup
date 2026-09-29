@@ -16,8 +16,10 @@ def reset_to_reference(
     env_ids: torch.Tensor,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     random_start: bool = True,
+    joint_pos_noise: float = 0.03,
+    joint_vel_noise: float = 0.1,
 ):
-    """Reset robot pose and velocity to a random frame in the reference clip."""
+    """Reset to a reference frame with uniform joint noise (radians and radians/second)."""
     asset = env.scene[asset_cfg.name]
     if not hasattr(env, "reference_start_frames"):
         env.reference_start_frames = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
@@ -44,6 +46,12 @@ def reset_to_reference(
     joint_vel[:, indices] = frame["joint_vel"].to(asset.device)
     root_state = REFERENCE.get_root_state(frame_ids).to(asset.device)
     root_state[:, :3] += env.scene.env_origins[env_ids]
+
+    # Independently perturb each environment and joint around the reference state.
+    joint_pos += torch.empty_like(joint_pos).uniform_(-joint_pos_noise, joint_pos_noise)
+    joint_vel += torch.empty_like(joint_vel).uniform_(-joint_vel_noise, joint_vel_noise)
+    limits = asset.data.soft_joint_pos_limits[env_ids]
+    joint_pos = torch.clamp(joint_pos, min=limits[..., 0], max=limits[..., 1])
 
     # write to sim
     asset.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)

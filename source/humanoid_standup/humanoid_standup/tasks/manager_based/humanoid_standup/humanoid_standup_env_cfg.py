@@ -100,7 +100,11 @@ class EventCfg:
     reset_robot = EventTerm(
         func=mdp.reset_to_reference,
         mode="reset",
-        params={"random_start": True},
+        params={
+            "random_start": True,
+            "joint_pos_noise": 0.03,
+            "joint_vel_noise": 0.1,
+        },
     )
 
 @configclass

@@ -68,6 +68,7 @@ import gymnasium as gym
 import torch
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
+import isaaclab.sim as sim_utils
 from isaaclab.envs import (
     DirectMARLEnv,
     DirectMARLEnvCfg,
@@ -75,6 +76,7 @@ from isaaclab.envs import (
     ManagerBasedRLEnvCfg,
     multi_agent_to_single_agent,
 )
+from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
 
@@ -92,6 +94,67 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import humanoid_standup.tasks  # noqa: F401
+from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import REFERENCE
+
+
+class KinematicsVisualization(gym.Wrapper):
+    """Display clip targets and measured kinematics, including in recorded video."""
+
+    def __init__(self, env):
+        super().__init__(env)
+        self.robot = env.unwrapped.scene["robot"]
+        self.body_ids, names = self.robot.find_bodies(REFERENCE.END_EFFECTOR_NAMES, preserve_order=True)
+        if list(names) != list(REFERENCE.END_EFFECTOR_NAMES):
+            raise ValueError(f"Could not resolve reference end effectors in order: {names}")
+        self.masses = self.robot.root_physx_view.get_masses().to(self.robot.device)
+        colors = {
+            "com": (1.0, 0.8, 0.0),
+            "left_wrist": (1.0, 0.1, 0.1),
+            "right_wrist": (0.1, 0.3, 1.0),
+            "left_foot": (1.0, 0.1, 0.6),
+            "right_foot": (0.1, 1.0, 0.5),
+        }
+        self.reference_markers = VisualizationMarkers(VisualizationMarkersCfg(
+            prim_path="/Visuals/ReferenceKinematics",
+            markers={name: sim_utils.SphereCfg(
+                radius=0.045 if name == "com" else 0.035,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color),
+            ) for name, color in colors.items()},
+        ))
+        self.actual_markers = VisualizationMarkers(VisualizationMarkersCfg(
+            prim_path="/Visuals/ActualKinematics",
+            markers={name: sim_utils.CuboidCfg(
+                size=(0.04, 0.04, 0.04),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color),
+            ) for name, color in colors.items()},
+        ))
+        self.marker_indices = torch.arange(5, device=self.robot.device).repeat(env.unwrapped.num_envs)
+        print("[INFO] Kinematics: spheres = clip targets; cubes = actual robot positions. "
+              "COM yellow, left/right wrist red/blue, left/right foot pink/green.")
+
+    def update_markers(self):
+        env = self.env.unwrapped
+        frame_ids = REFERENCE.frame_ids_for_env(env).to(REFERENCE.device)
+        targets = torch.cat((REFERENCE.get_com_pos(frame_ids)[:, None, :],
+                             REFERENCE.get_end_effector_pos(frame_ids)), dim=1).to(self.robot.device)
+        targets = targets + env.scene.env_origins[:, None, :]
+        com = (self.robot.data.body_com_pos_w * self.masses[..., None]).sum(dim=1)
+        com = com / self.masses.sum(dim=1, keepdim=True)
+        actual = torch.cat((com[:, None, :], self.robot.data.body_link_pos_w[:, self.body_ids]), dim=1)
+        self.reference_markers.visualize(translations=targets.reshape(-1, 3), marker_indices=self.marker_indices)
+        self.actual_markers.visualize(translations=actual.reshape(-1, 3), marker_indices=self.marker_indices)
+
+    def reset(self, **kwargs):
+        result = self.env.reset(**kwargs)
+        self.update_markers()
+        return result
+
+    def step(self, action):
+        result = self.env.step(action)
+        self.update_markers()
+        if self.env.unwrapped.sim.has_gui():
+            self.env.unwrapped.sim.render()
+        return result
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)
@@ -140,6 +203,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
         env = multi_agent_to_single_agent(env)
+
+    # Update markers before RecordVideo captures each frame.
+    env = KinematicsVisualization(env)
 
     # wrap for video recording
     if args_cli.video:
