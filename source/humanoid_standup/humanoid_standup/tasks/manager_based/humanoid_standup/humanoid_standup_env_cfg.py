@@ -186,7 +186,7 @@ class TerminationsCfg:
 @configclass
 class HumanoidStandupEnvCfg(ManagerBasedRLEnvCfg):
     # Scene settings
-    scene: HumanoidStandupSceneCfg = HumanoidStandupSceneCfg(num_envs=4096, env_spacing=4.0)
+    scene: HumanoidStandupSceneCfg = HumanoidStandupSceneCfg(num_envs=3*4096, env_spacing=4.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
