@@ -63,6 +63,7 @@ installed_version = metadata.version("rsl-rl-lib")
 
 import os
 import time
+from pathlib import Path
 
 import gymnasium as gym
 import torch
@@ -95,6 +96,9 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import humanoid_standup.tasks  # noqa: F401
 from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import REFERENCE
+
+# Update the shared reference before Hydra constructs the environment config.
+REFERENCE.__init__(Path(__file__).resolve().parents[2] / "data/training", REFERENCE.dt, REFERENCE.device)
 
 
 class KinematicsVisualization(gym.Wrapper):
@@ -202,6 +206,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Let playback continue through tracking errors until the reference finishes.
     env_cfg.terminations.ee_deviation = None
     env_cfg.terminations.com_deviation = None
+    print(f"[INFO] Playback samples uniformly from {REFERENCE.num_clips} training clips on each reset.")
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
     # convert to single-agent instance if required by the RL algorithm
