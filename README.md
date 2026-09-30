@@ -144,6 +144,21 @@ Some examples of packages that can likely be excluded are:
 ```
 ## DeepMimic-style stand-up training
 
+Training loads every `*.csv` directly in `/workspace/humanoid_standup/data/training`
+(`data/training` in the host checkout). Put processed 120 FPS clips with precomputed
+end-effector and COM columns there. Each environment independently selects a clip
+uniformly on reset, then samples a starting frame within that clip. Clips may have
+different lengths; rewards and completion always follow the selected clip.
+The training command is unchanged:
+
+```bash
+python scripts/rsl_rl/train.py --task Humanoid-Standup --headless
+```
+
+The selected filenames are printed at startup and saved in `params/training_clips.yaml`
+in the run directory. Keep this set of files when resuming a run. Reference playback
+and policy evaluation retain their existing single-clip behavior.
+
 The task uses synchronized random reference-state initialization: root pose,
 root world velocity, joint state, rewards, and termination
 share one per-environment starting frame. The RSL-RL runner must keep

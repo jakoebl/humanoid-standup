@@ -88,7 +88,28 @@ class Reference:
         if not self.path.exists():
             raise FileNotFoundError(f"Motion file not found: {self.path}")
 
-        self._load()
+        if self.path.is_dir():
+            self.paths = sorted(self.path.glob("*.csv"))
+            if not self.paths:
+                raise ValueError(f"No training CSV clips found in {self.path}")
+            clips = [Reference(path, dt, device) for path in self.paths]
+            for clip in clips:
+                if clip.end_effector_pos is None or clip.com_pos is None:
+                    raise ValueError(f"Training clip requires precomputed EE and COM targets: {clip.path}")
+            # Differentiate each clip separately before joining storage.
+            for name in ("frames", "root_pos", "root_quat", "root_lin_vel", "root_ang_vel",
+                         "joint_pos", "joint_vel", "end_effector_pos", "com_pos"):
+                setattr(self, name, torch.cat([getattr(clip, name) for clip in clips]))
+            lengths = [clip.num_frames for clip in clips]
+            self.num_frames = sum(lengths)
+        else:
+            self.paths = [self.path]
+            self._load()
+            lengths = [self.num_frames]
+        self.num_clips = len(lengths)
+        self.max_clip_frames = max(lengths)
+        self.clip_lengths = torch.tensor(lengths, dtype=torch.long, device=self.device)
+        self.clip_offsets = self.clip_lengths.cumsum(0) - self.clip_lengths
 
     def _load(self) -> None:
         """Load and preprocess the CSV."""
@@ -104,6 +125,8 @@ class Reference:
             data = data[None, :]
         if len(data) < 2:
             raise ValueError("Reference motion requires at least two frames.")
+        if not np.isfinite(data).all():
+            raise ValueError(f"Nonfinite motion values in {self.path}")
 
         expected_columns = 1 + 3 + 3 + self.NUM_JOINTS
 
@@ -294,11 +317,21 @@ class Reference:
         return frames.clamp(0, self.num_frames - 1)
 
     def frame_ids_for_env(self, env) -> torch.Tensor:
-        return self.get_frame_ids(env.episode_length_buf, env.step_dt, getattr(env, "reference_start_frames", 0))
+        offsets, lengths = self.clip_bounds_for_env(env)
+        frames = getattr(env, "reference_start_frames", 0) + torch.floor(
+            env.episode_length_buf.to(torch.float64) * (env.step_dt / self.dt) + 1e-8
+        ).long()
+        return offsets + torch.minimum(frames.clamp(min=0), lengths - 1)
+
+    def clip_bounds_for_env(self, env):
+        clip_ids = getattr(env, "reference_clip_ids", torch.zeros_like(env.episode_length_buf))
+        return (self.clip_offsets.to(clip_ids.device)[clip_ids],
+                self.clip_lengths.to(clip_ids.device)[clip_ids])
 
     def phase_for_env(self, env) -> torch.Tensor:
         frames = getattr(env, "reference_start_frames", 0) + env.episode_length_buf * (env.step_dt / self.dt)
-        return (frames / (self.num_frames - 1)).clamp(0.0, 1.0)
+        _, lengths = self.clip_bounds_for_env(env)
+        return (frames / (lengths - 1)).clamp(0.0, 1.0)
 
     def get_joint_pos(self, frame: torch.Tensor) -> torch.Tensor:
         return self.joint_pos[frame]
