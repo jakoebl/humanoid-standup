@@ -24,14 +24,18 @@ def reset_to_reference(
     if not hasattr(env, "reference_start_frames"):
         env.reference_start_frames = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
 
-    # sample a random frame for each env.
-    frames = torch.randint(REFERENCE.num_frames - 1, (len(env_ids),), device=env.device) if random_start else torch.zeros(len(env_ids), dtype=torch.long, device=env.device)
+    if not hasattr(env, "reference_clip_ids"):
+        env.reference_clip_ids = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+    # Choose clips uniformly, then sample a local frame excluding the final sample.
+    clip_ids = torch.randint(REFERENCE.num_clips, (len(env_ids),), device=env.device)
+    env.reference_clip_ids[env_ids] = clip_ids
+    lengths = REFERENCE.clip_lengths.to(env.device)[clip_ids]
+    frames = (torch.rand(len(env_ids), device=env.device) * (lengths - 1)).long() if random_start else torch.zeros(len(env_ids), dtype=torch.long, device=env.device)
 
     # store the sampled frame for each env so that we can use it to compute rewards and terminations
     env.reference_start_frames[env_ids] = frames
 
-    # get the reference frame and joint indices??
-    frame_ids = frames.to(REFERENCE.device)
+    frame_ids = frames.to(REFERENCE.device) + REFERENCE.clip_offsets[clip_ids.to(REFERENCE.device)]
     frame = REFERENCE.get_frame(frame_ids)
     joint_pos = asset.data.default_joint_pos[env_ids].clone()
     joint_vel = asset.data.default_joint_vel[env_ids].clone()

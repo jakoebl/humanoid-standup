@@ -58,10 +58,11 @@ class Robot:
     def write_root_state_to_sim(self,r,env_ids): self.r=r
 class Scene(dict): pass
 robot=Robot(); scene=Scene(robot=robot); scene.env_origins=torch.arange(24).reshape(8,3).float()
+robot.data.soft_joint_pos_limits = torch.tensor([-float('inf'), float('inf')]).expand(8, 29, 2)
 env=types.SimpleNamespace(scene=scene,num_envs=8,device='cpu',step_dt=4*ref.dt,episode_length_buf=torch.zeros(8,dtype=torch.long))
 ids=torch.tensor([1,3,6])
 torch.manual_seed(5)
-events.reset_to_reference(env,ids)
+events.reset_to_reference(env,ids,joint_pos_noise=0,joint_vel_noise=0)
 f=env.reference_start_frames[ids]
 assert f.unique().numel()>1
 assert (env.reference_start_frames[torch.tensor([0,2,4,5,7])]==0).all()
@@ -166,3 +167,71 @@ with tempfile.TemporaryDirectory() as directory:
     else:
         raise AssertionError('Playback did not construct its config')
 print('PASS: playback CSV selects motion in place before environment configuration')
+
+# Mixed lengths must preserve clip boundaries and independent derivatives.
+with tempfile.TemporaryDirectory() as directory:
+    directory = Path(directory)
+    for name, count, offset in [('a', 3, 0), ('b', 7, 10000)]:
+        motion = np.zeros((count, 51), dtype=np.float32)
+        motion[:, 0] = np.arange(count)
+        motion[:, 1] = offset + np.arange(count)
+        motion[:, 7:36] = offset
+        motion[:, 36:] = offset
+        np.savetxt(directory / f'{name}.csv', motion, delimiter=',', header='test', comments='')
+    multi = reference.Reference(directory, .01)
+    assert multi.clip_lengths.tolist() == [3, 7]
+    assert multi.clip_offsets.tolist() == [0, 3]
+    assert multi.max_clip_frames == 7
+    torch.testing.assert_close(multi.root_lin_vel[:, 0], torch.ones(10), atol=.001, rtol=0)
+    torch.testing.assert_close(multi.joint_vel, torch.zeros(10, 29))
+    mixed = types.SimpleNamespace(
+        episode_length_buf=torch.tensor([2, 2, 999]), step_dt=.01,
+        reference_start_frames=torch.tensor([0, 0, 1]), reference_clip_ids=torch.tensor([0, 1, 1]),
+    )
+    assert multi.frame_ids_for_env(mixed).tolist() == [2, 5, 9]
+    torch.testing.assert_close(multi.phase_for_env(mixed), torch.tensor([1., 1/3, 1.]))
+    targets = multi.get_end_effector_pos(multi.frame_ids_for_env(mixed))
+    assert targets[:, 0, 0].tolist() == [0., 10000., 10000.]
+    events.REFERENCE = terms.REFERENCE = multi
+    env = types.SimpleNamespace(scene=scene,num_envs=8,device='cpu',step_dt=.01,
+                                episode_length_buf=torch.zeros(8,dtype=torch.long))
+    try:
+        torch.manual_seed(12)
+        seen = set()
+        for _ in range(20):
+            events.reset_to_reference(env, ids, joint_pos_noise=0, joint_vel_noise=0)
+            clips = env.reference_clip_ids[ids]
+            seen.update(clips.tolist())
+            starts = env.reference_start_frames[ids]
+            assert (starts < multi.clip_lengths[clips] - 1).all()
+            frames = multi.frame_ids_for_env(env)[ids]
+            torch.testing.assert_close(robot.p, multi.joint_pos[frames].flip(1))
+            torch.testing.assert_close(robot.r[:, :3] - scene.env_origins[ids], multi.root_pos[frames])
+            assert env.reference_clip_ids[[0, 2, 4, 5, 7]].tolist() == [0]*5
+        assert seen == {0, 1}
+        events.reset_to_reference(env, ids, random_start=False, joint_pos_noise=0, joint_vel_noise=0)
+        assert (env.reference_start_frames[ids] == 0).all()
+        env.episode_length_buf[ids] = multi.clip_lengths[env.reference_clip_ids[ids]] - 1
+        assert terms.reference_complete(env)[ids].all()
+        assert not terms.reference_complete(env)[[0, 2, 4, 5, 7]].any()
+    finally:
+        events.REFERENCE = terms.REFERENCE = ref
+    empty = directory / 'empty'
+    empty.mkdir()
+    try:
+        reference.Reference(empty, .01)
+    except ValueError as error:
+        assert 'No training CSV' in str(error)
+    else:
+        raise AssertionError('Empty training directory accepted')
+    np.savetxt(directory / 'missing_targets.csv', np.zeros((3, 36)), delimiter=',', header='test')
+    try:
+        reference.Reference(directory, .01)
+    except ValueError as error:
+        assert 'missing_targets.csv' in str(error)
+    else:
+        raise AssertionError('Training clip without kinematics accepted')
+
+training = reference.Reference(ROOT / 'data/training', ref.dt)
+assert training.num_clips >= 1
+print(f'PASS: multi-clip boundaries, velocities, targets, partial resets, completion, validation; {training.num_clips} training clips loaded')
