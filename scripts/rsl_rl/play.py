@@ -198,6 +198,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # create isaac environment
     # Evaluate and validate reference kinematics at the true robot mass.
     env_cfg.curriculum.robot_mass = None
+
+    # Let playback continue through tracking errors until the reference finishes.
+    env_cfg.terminations.ee_deviation = None
+    env_cfg.terminations.com_deviation = None
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
     # convert to single-agent instance if required by the RL algorithm
