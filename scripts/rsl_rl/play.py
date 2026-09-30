@@ -63,6 +63,7 @@ installed_version = metadata.version("rsl-rl-lib")
 
 import os
 import time
+from pathlib import Path
 
 import gymnasium as gym
 import torch
@@ -95,6 +96,9 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import humanoid_standup.tasks  # noqa: F401
 from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import REFERENCE
+
+# Load all training clips before Hydra constructs the environment config.
+REFERENCE.__init__(Path(__file__).resolve().parents[2] / "data/training", REFERENCE.dt, REFERENCE.device)
 
 
 class KinematicsVisualization(gym.Wrapper):
