@@ -326,3 +326,42 @@ CSV poses without stepping physics, and exits after one pass. Rendering can be
 slower than real time without changing the video's playback speed. Run with the
 Isaac Sim Python environment; RGB rendering still requires a compatible GPU in
 headless mode.
+
+### Record policy videos after training
+
+Run the standalone batch recorder in your Isaac Sim environment:
+
+```bash
+# Scan all runs under the project's logs directory.
+python scripts/record_models.py
+
+# Record only one training run.
+python scripts/record_models.py logs/rsl_rl/humanoid_standup/<run>
+
+# Preview selected checkpoints without starting the simulator.
+python scripts/record_models.py --dry-run
+```
+
+The script finds `model_0.pt`, `model_1000.pt`, `model_2000.pt`, etc.,
+and calls the existing `scripts/record.py` sequentially for each checkpoint.
+Training saves checkpoints for offline recording and no longer starts these recordings.
+The existing optional `--video` training flag still enables its original Gym video capture.
+
+For every clip in `data/training`, each checkpoint records the policy from
+0%, 10%, …, 90% through that clip to its end. Videos are saved under
+`vids/<training run directory name>/<iteration>/<clip name>/{0,10,...,90}.mp4`.
+Earlier iterations are preserved; rerunning an iteration replaces its videos.
+Recordings use noise-free resets and the true robot mass, matching policy playback.
+Keep the training clips available on the recording machine.
+
+Simulator output is saved to `<run>/recordings/<iteration>.log`.
+Failures are reported and the batch continues with the next checkpoint;
+the script exits with a nonzero status if any recording failed.
+Use `--device`, `--task`, `--agent`, or `--gui` to override playback defaults.
+In the Isaac Sim container, you can use `/isaac-sim/python.sh` instead of `python`.
+
+To record a single checkpoint:
+
+```bash
+python scripts/record.py --checkpoint logs/rsl_rl/humanoid_standup/<run>/model_1000.pt
+```

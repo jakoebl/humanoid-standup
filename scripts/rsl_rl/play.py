@@ -17,6 +17,7 @@ import cli_args  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
+parser.add_argument("--record-policy-dir", type=str, help="Record all clips at ten starting fractions.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
 parser.add_argument(
@@ -41,7 +42,7 @@ AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
 # always enable cameras to record video
-if args_cli.video:
+if args_cli.video or args_cli.record_policy_dir:
     args_cli.enable_cameras = True
 
 # clear out sys.argv for Hydra
@@ -63,7 +64,6 @@ installed_version = metadata.version("rsl-rl-lib")
 
 import os
 import time
-from pathlib import Path
 from pathlib import Path
 
 import gymnasium as gym
@@ -162,6 +162,55 @@ class KinematicsVisualization(gym.Wrapper):
         return result
 
 
+def record_policy_rollouts(env, runner, policy, output_dir):
+    """Record ten deterministic resets per clip, atomically replacing each MP4."""
+    import math
+    import tempfile
+    import imageio.v2 as imageio
+
+    raw = env.unwrapped
+    reset_cfg = raw.event_manager.get_term_cfg("reset_robot")
+    if version.parse(installed_version) >= version.parse("4.0.0"):
+        policy_nn = policy
+    else:
+        policy_nn = getattr(runner.alg, "policy", None)
+        if policy_nn is None:
+            policy_nn = runner.alg.actor_critic
+    for clip_id, clip in enumerate(REFERENCE.paths):
+        folder = output_dir / clip.stem
+        folder.mkdir(parents=True, exist_ok=True)
+        for percent in range(0, 100, 10):
+            reset_cfg.params.update(clip_id=clip_id, start_fraction=percent / 100)
+            raw.event_manager.set_term_cfg("reset_robot", reset_cfg)
+            with torch.inference_mode():
+                obs, _ = env.reset()
+                policy_nn.reset(torch.ones(raw.num_envs, dtype=torch.bool, device=raw.device))
+                start = int(raw.reference_start_frames[0].item())
+                remaining = int(REFERENCE.clip_lengths[clip_id].item()) - 1 - start
+                steps = math.ceil(remaining * REFERENCE.dt / raw.step_dt)
+                raw.render()
+                for _ in range(10):
+                    raw.sim.render()
+                output = folder / f"{percent}.mp4"
+                fd, temporary = tempfile.mkstemp(suffix=".mp4", prefix=".record-", dir=folder)
+                os.close(fd)
+                try:
+                    with imageio.get_writer(temporary, format="FFMPEG", mode="I",
+                                            fps=1 / raw.step_dt, codec="libx264",
+                                            pixelformat="yuv420p", macro_block_size=2) as writer:
+                        for frame in range(steps + 1):
+                            if frame:
+                                obs, _, _, _ = env.step(policy(obs))
+                            rgb = raw.render(recompute=True)
+                            if rgb is None or not rgb.size:
+                                raise RuntimeError("Isaac Sim returned an empty RGB frame.")
+                            writer.append_data(rgb)
+                    os.replace(temporary, output)
+                    print(f"Saved {output}", flush=True)
+                finally:
+                    Path(temporary).unlink(missing_ok=True)
+
+
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     """Play with RSL-RL agent."""
@@ -208,7 +257,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env_cfg.terminations.ee_deviation = None
     env_cfg.terminations.com_deviation = None
     print(f"[INFO] Playback samples uniformly from {REFERENCE.num_clips} training clips on each reset.")
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    if args_cli.record_policy_dir:
+        env_cfg.scene.num_envs = 1
+        env_cfg.observations.policy.enable_corruption = False
+        env_cfg.events.reset_robot.params.update(joint_pos_noise=0.0, joint_vel_noise=0.0)
+        # Record to the end without automatic resets contaminating the final frame.
+        for name in vars(env_cfg.terminations):
+            if not name.startswith("_"):
+                setattr(env_cfg.terminations, name, None)
+    env = gym.make(args_cli.task, cfg=env_cfg,
+                   render_mode="rgb_array" if args_cli.video or args_cli.record_policy_dir else None)
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
@@ -244,6 +302,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # obtain the trained policy for inference
     policy = runner.get_inference_policy(device=env.unwrapped.device)
+
+    if args_cli.record_policy_dir:
+        try:
+            record_policy_rollouts(env, runner, policy, Path(args_cli.record_policy_dir))
+        finally:
+            env.close()
+        return
 
     # export the trained policy to JIT and ONNX formats
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")

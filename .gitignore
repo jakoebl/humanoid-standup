@@ -1,4 +1,7 @@
+# Keep only the initial checkpoint and checkpoints every 1000 iterations.
 model_*.pt
+!model_0.pt
+!model_[0-9]*000.pt
 vids
 
 

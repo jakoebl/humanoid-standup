@@ -16,6 +16,8 @@ def reset_to_reference(
     env_ids: torch.Tensor,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     random_start: bool = True,
+    clip_id: int | None = None,
+    start_fraction: float | None = None,
     joint_pos_noise: float = 0.03,
     joint_vel_noise: float = 0.1,
 ):
@@ -28,9 +30,18 @@ def reset_to_reference(
         env.reference_clip_ids = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
     # Choose clips uniformly, then sample a local frame excluding the final sample.
     clip_ids = torch.randint(REFERENCE.num_clips, (len(env_ids),), device=env.device)
+    if clip_id is not None:
+        if not 0 <= clip_id < REFERENCE.num_clips:
+            raise ValueError(f"Invalid reference clip: {clip_id}")
+        clip_ids.fill_(clip_id)
     env.reference_clip_ids[env_ids] = clip_ids
     lengths = REFERENCE.clip_lengths.to(env.device)[clip_ids]
     frames = (torch.rand(len(env_ids), device=env.device) * (lengths - 1)).long() if random_start else torch.zeros(len(env_ids), dtype=torch.long, device=env.device)
+
+    if start_fraction is not None:
+        if not 0 <= start_fraction < 1:
+            raise ValueError("start_fraction must be in [0, 1).")
+        frames = ((lengths - 1) * start_fraction).long()
 
     # store the sampled frame for each env so that we can use it to compute rewards and terminations
     env.reference_start_frames[env_ids] = frames

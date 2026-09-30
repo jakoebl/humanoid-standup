@@ -151,7 +151,7 @@ class RewardsCfg:
     )
 
     # Penalize rapid changes in raw joint targets; compensated to a per-step cost below.
-    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.0025)
+    #action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.0025)
 
 
 @configclass
