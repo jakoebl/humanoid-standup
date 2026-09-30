@@ -109,11 +109,10 @@ class EventCfg:
 
 @configclass
 class CurriculumCfg:
-    """Restore full robot mass over the first 5,000 default PPO iterations."""
 
     robot_mass = CurrTerm(
         func=mdp.robot_mass_curriculum,
-        params={"initial_scale": 0.5, "ramp_steps": 240_000},
+        params={"initial_scale": 0.5, "ramp_steps": 16*5000},
     )
 
 
@@ -150,9 +149,6 @@ class RewardsCfg:
         weight=0.10,
         params={"asset_cfg": SceneEntityCfg("robot"), "scale": 10.0},
     )
-
-    # Per-step cost on raw policy actions, before joint-position scaling.
-    action_penalty = RewTerm(func=mdp.action_l2, weight=-0.0005)
 
     # Penalize rapid changes in raw joint targets; compensated to a per-step cost below.
     action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.0025)
