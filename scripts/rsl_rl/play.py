@@ -201,6 +201,10 @@ def record_policy_rollouts(env, runner, policy, output_dir):
                         for frame in range(steps + 1):
                             if frame:
                                 obs, _, _, _ = env.step(policy(obs))
+                            # Headless steps may skip rendering without RTX sensors.
+                            # Flush physics/marker updates before reading the RGB annotator;
+                            # render(recompute=True) alone can return its cached frame.
+                            raw.sim.render()
                             rgb = raw.render(recompute=True)
                             if rgb is None or not rgb.size:
                                 raise RuntimeError("Isaac Sim returned an empty RGB frame.")
