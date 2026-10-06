@@ -146,7 +146,7 @@ class RewardsCfg:
             "reference_body_indices": (0, 1),
             "scale": 40.0,
             "upright_com_height": UPRIGHT_COM_HEIGHT,
-            "stop_when_standing": False,
+            "stop_when_standing": True,
         },
     )
     leg_end_effector_tracking = RewTerm(
@@ -184,7 +184,7 @@ class RewardsCfg:
     )
 
     # Penalize rapid changes in raw joint targets; compensated to a per-step cost below.
-    #action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.0025)
+    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.0025)
 
 
 @configclass
