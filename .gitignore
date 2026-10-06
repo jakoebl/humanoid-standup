@@ -1,9 +1,9 @@
-# Keep only the initial checkpoint and checkpoints every 1000 iterations.
+# Keep model checkpoints out of Git.
+model.pt
 model_*.pt
-!model_0.pt
-!model_[0-9]*000.pt
 vids
-
+outputs
+logs
 
 ################################
 Python Stuff

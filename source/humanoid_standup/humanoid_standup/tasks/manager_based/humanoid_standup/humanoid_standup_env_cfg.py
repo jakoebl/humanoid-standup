@@ -19,6 +19,7 @@ from isaaclab.utils import configclass
 
 from . import mdp
 from .mdp.reference import REFERENCE, Reference
+from .mdp.position_tracking import UPRIGHT_COM_HEIGHT
 
 ##
 # Pre-defined configs
@@ -44,6 +45,7 @@ class HumanoidStandupSceneCfg(InteractiveSceneCfg):
 
     # robot
     robot: ArticulationCfg = G1_29DOF_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot.spawn.articulation_props.enabled_self_collisions = True
 
     # IMU attached to the robot pelvis
     imu: ImuCfg = ImuCfg(
@@ -102,8 +104,9 @@ class EventCfg:
         mode="reset",
         params={
             "random_start": True,
-            "joint_pos_noise": 0.03,
-            "joint_vel_noise": 0.1,
+            "joint_pos_noise": 0,
+            "joint_vel_noise": 0,
+            "last_initial_frame": 0.7,
         },
     )
 
@@ -112,7 +115,7 @@ class CurriculumCfg:
 
     robot_mass = CurrTerm(
         func=mdp.robot_mass_curriculum,
-        params={"initial_scale": 0.5, "ramp_steps": 16*5000},
+        params={"initial_scale": 0.25, "ramp_steps": 16*5000},
     )
 
 
@@ -122,7 +125,7 @@ class RewardsCfg:
     joint_position_tracking = RewTerm(
         func=mdp.joint_pos_target_exp,
         weight=0.65,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(Reference.JOINT_NAMES)), "scale": 4.0},
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(Reference.JOINT_NAMES)), "scale": 4.0, "upright_com_height": UPRIGHT_COM_HEIGHT},
     )
 
     joint_velocity_tracking = RewTerm(
@@ -131,27 +134,56 @@ class RewardsCfg:
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(Reference.JOINT_NAMES)), "scale": 0.1},
     )
 
-    end_effector_tracking = RewTerm(
+    arm_end_effector_tracking = RewTerm(
         func=mdp.end_effector_pos_target_exp,
-        weight=1.5,
+        weight=0.75,
         params={
             "asset_cfg": SceneEntityCfg(
                 "robot",
-                body_names=list(Reference.END_EFFECTOR_NAMES),
+                body_names=list(Reference.END_EFFECTOR_NAMES[:2]),
                 preserve_order=True,
             ),
+            "reference_body_indices": (0, 1),
             "scale": 40.0,
+            "upright_com_height": UPRIGHT_COM_HEIGHT,
+        },
+    )
+    leg_end_effector_tracking = RewTerm(
+        func=mdp.end_effector_pos_target_exp,
+        weight=0.75,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=list(Reference.END_EFFECTOR_NAMES[2:]),
+                preserve_order=True,
+            ),
+            "reference_body_indices": (2, 3),
+            "scale": 40.0,
+            "upright_com_height": UPRIGHT_COM_HEIGHT,
         },
     )
 
     com_tracking = RewTerm(
         func=mdp.com_pos_target_exp,
         weight=0.10,
-        params={"asset_cfg": SceneEntityCfg("robot"), "scale": 10.0},
+        params={"asset_cfg": SceneEntityCfg("robot"), "scale": 10.0, "upright_com_height": UPRIGHT_COM_HEIGHT},
+    )
+
+    standing_foot_movement_penalty = RewTerm(
+        func=mdp.standing_foot_displacement,
+        weight=-1.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=["left_ankle_roll_link", "right_ankle_roll_link"],
+                preserve_order=True,
+            ),
+            "upright_com_height": UPRIGHT_COM_HEIGHT,
+        },
     )
 
     # Penalize rapid changes in raw joint targets; compensated to a per-step cost below.
-    #action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.0025)
+    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.0025)
 
 
 @configclass
@@ -166,6 +198,7 @@ class TerminationsCfg:
         func=mdp.end_effector_deviation,
         params={
             "threshold": 0.75,
+            "upright_com_height": UPRIGHT_COM_HEIGHT,
             "asset_cfg": SceneEntityCfg(
                 "robot", body_names=list(Reference.END_EFFECTOR_NAMES), preserve_order=True,
             ),
@@ -174,7 +207,7 @@ class TerminationsCfg:
 
     com_deviation = DoneTerm(
         func=mdp.com_deviation,
-        params={"threshold": 0.5, "asset_cfg": SceneEntityCfg("robot")},
+        params={"threshold": 0.5, "upright_com_height": UPRIGHT_COM_HEIGHT, "asset_cfg": SceneEntityCfg("robot")},
     )
 
 
@@ -186,7 +219,7 @@ class TerminationsCfg:
 @configclass
 class HumanoidStandupEnvCfg(ManagerBasedRLEnvCfg):
     # Scene settings
-    scene: HumanoidStandupSceneCfg = HumanoidStandupSceneCfg(num_envs=3*4096, env_spacing=4.0)
+    scene: HumanoidStandupSceneCfg = HumanoidStandupSceneCfg(num_envs=4096, env_spacing=4.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()

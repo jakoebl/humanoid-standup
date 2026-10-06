@@ -27,6 +27,10 @@ parser.add_argument(
     default=None,
     help="Motion CSV to play, including precomputed COM and end-effector positions.",
 )
+parser.add_argument(
+    "--foot-relative-markers", action="store_true",
+    help="Align markers to the actual left foot above the standing CoM threshold, as in training.",
+)
 parser.add_argument("--disable_fabric", action="store_true", default=False)
 parser.add_argument(
     "--check-kinematics", action="store_true",
@@ -62,6 +66,7 @@ import isaaclab_tasks  # noqa: F401
 import humanoid_standup.tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
 from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import REFERENCE
+from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.position_tracking import position_tracking_targets
 
 
 class PlaybackControls:
@@ -191,8 +196,20 @@ def show_reference_markers(
     reference_positions: torch.Tensor,
     frame_id: int,
     env_origin: torch.Tensor,
+    env=None,
+    foot_relative: bool = False,
 ) -> None:
     positions = reference_positions[frame_id].to(env_origin.device).reshape(5, 3)
+    if foot_relative:
+        raw = env.unwrapped
+        robot = raw.scene["robot"]
+        # Refresh FK and cached poses after directly writing the reference state.
+        raw.sim.physics_sim_view.update_articulations_kinematic()
+        robot.update(REFERENCE.dt)
+        frame_ids = torch.full((raw.num_envs,), frame_id, device=REFERENCE.device, dtype=torch.long)
+        targets = positions[None].expand(raw.num_envs, -1, -1)
+        height = raw.cfg.rewards.com_tracking.params["upright_com_height"]
+        positions = position_tracking_targets(raw, robot, frame_ids, targets, height)[0]
     markers.visualize(
         marker_indices=[0, 1, 2, 3, 4],
         translations=positions + env_origin,
@@ -352,7 +369,8 @@ def record_reference(env, reference_positions, reference_markers, output, fps):
                     raise RuntimeError("Simulation closed before recording finished.")
                 apply_reference_frame(env, frame_id)
                 show_reference_markers(reference_markers, reference_positions, frame_id,
-                                       env.unwrapped.scene.env_origins[0])
+                                       env.unwrapped.scene.env_origins[0], env=env,
+                                       foot_relative=args_cli.foot_relative_markers)
                 env.unwrapped.sim.physics_sim_view.update_articulations_kinematic()
                 frame_recording_camera(env)
                 if index == 0:
@@ -436,6 +454,8 @@ def main() -> None:
                 reference_positions,
                 frame_id,
                 env.unwrapped.scene.env_origins[0],
+                env=env,
+                foot_relative=args_cli.foot_relative_markers,
             )
             # Render the exact reference pose. A physics step applies gravity,
             # contacts and PD actions, moving the robot away from the markers.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record saved policies at iterations 0, 1000, 2000, ... using record.py."""
+"""Record the latest three checkpoints per run from frame 0 at 1080p/60 fps using record.py."""
 
 import argparse
 import os
@@ -13,15 +13,15 @@ PROJECT = Path(__file__).resolve().parents[1]
 
 
 def find_checkpoints(logs):
-    """Find eligible checkpoints, sorted by run and numeric iteration."""
-    checkpoints = []
+    """Find the latest three checkpoints per run, sorted by numeric iteration."""
+    runs = {}
     for path in logs.rglob("model_*.pt"):
         match = re.fullmatch(r"model_(\d+)\.pt", path.name)
         if path.is_file() and match:
-            iteration = int(match[1])
-            if iteration % 1000 == 0:
-                checkpoints.append((path, iteration))
-    return sorted(checkpoints, key=lambda item: (str(item[0].parent), item[1]))
+            runs.setdefault(path.parent, []).append((path, int(match[1])))
+    return [checkpoint
+            for run in sorted(runs, key=str)
+            for checkpoint in sorted(runs[run], key=lambda item: item[1])[-3:]]
 
 
 def main():
@@ -39,7 +39,7 @@ def main():
         parser.error(f"Logs directory not found: {logs}")
     checkpoints = find_checkpoints(logs)
     if not checkpoints:
-        parser.error(f"No checkpoints at multiples of 1000 found in {logs}")
+        parser.error(f"No model_<iteration>.pt checkpoints found in {logs}")
 
     # Output paths use the run basename: reject ambiguous names across experiments.
     runs = {}

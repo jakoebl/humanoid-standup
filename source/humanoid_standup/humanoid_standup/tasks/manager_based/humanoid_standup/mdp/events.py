@@ -20,6 +20,7 @@ def reset_to_reference(
     start_fraction: float | None = None,
     joint_pos_noise: float = 0.03,
     joint_vel_noise: float = 0.1,
+    last_initial_frame: float = 1,
 ):
     """Reset to a reference frame with uniform joint noise (radians and radians/second)."""
     asset = env.scene[asset_cfg.name]
@@ -28,6 +29,11 @@ def reset_to_reference(
 
     if not hasattr(env, "reference_clip_ids"):
         env.reference_clip_ids = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+    
+    # make sure last_initial_frame is in [0, 1]
+    if not 0 <= last_initial_frame <= 1:
+        raise ValueError("last_initial_frame must be in [0, 1].")
+
     # Choose clips uniformly, then sample a local frame excluding the final sample.
     clip_ids = torch.randint(REFERENCE.num_clips, (len(env_ids),), device=env.device)
     if clip_id is not None:
@@ -36,13 +42,15 @@ def reset_to_reference(
         clip_ids.fill_(clip_id)
     env.reference_clip_ids[env_ids] = clip_ids
     lengths = REFERENCE.clip_lengths.to(env.device)[clip_ids]
-    frames = (torch.rand(len(env_ids), device=env.device) * (lengths - 1)).long() if random_start else torch.zeros(len(env_ids), dtype=torch.long, device=env.device)
+    frames = (torch.rand(len(env_ids), device=env.device) * last_initial_frame * (lengths - 1)).long() if random_start else torch.zeros(len(env_ids), dtype=torch.long, device=env.device)
 
+    # DON'T REMOVE, THIS IS USED FOR RECORDING CLIPS AT DETERMINISTIC INITIAL FRAMES
     if start_fraction is not None:
         if not 0 <= start_fraction < 1:
             raise ValueError("start_fraction must be in [0, 1).")
         frames = ((lengths - 1) * start_fraction).long()
 
+    
     # store the sampled frame for each env so that we can use it to compute rewards and terminations
     env.reference_start_frames[env_ids] = frames
 

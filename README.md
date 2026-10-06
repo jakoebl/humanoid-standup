@@ -269,6 +269,8 @@ starting at zero. EE/COM targets are then computed by the same simulation path.
 The default `--input-format legacy` preserves existing CSV behavior.
 
 To play another processed clip, use `python scripts/play_reference.py --csv path/to/processed_clip.csv`.
+
+Add `--foot-relative-markers` to align the marker targets to the actual left foot position and heading when the robot's CoM is above the configured standing threshold (default 0.65 m), matching training. Below the threshold, markers retain their absolute reference positions. This option also applies to `--record`; kinematics validation still compares the original CSV coordinates.
 The graphical viewer's **Reference Playback** panel has play/pause, a frame slider,
 previous/next frame buttons, and an editable frame number starting at zero.
 Scrubbing or stepping pauses on the exact CSV pose; press **Play** to resume looping.
@@ -342,14 +344,17 @@ python scripts/record_models.py logs/rsl_rl/humanoid_standup/<run>
 python scripts/record_models.py --dry-run
 ```
 
-The script finds `model_0.pt`, `model_1000.pt`, `model_2000.pt`, etc.,
-and calls the existing `scripts/record.py` sequentially for each checkpoint.
+The script selects the latest three `model_<iteration>.pt` checkpoints per training run
+by iteration number and calls `scripts/record.py` sequentially for each checkpoint.
+Runs with fewer than three checkpoints record all available checkpoints.
 Training saves checkpoints for offline recording and no longer starts these recordings.
 The existing optional `--video` training flag still enables its original Gym video capture.
 
 For every clip in `data/training`, each checkpoint records the policy from
-0%, 10%, …, 90% through that clip to its end. Videos are saved under
-`vids/<training run directory name>/<iteration>/<clip name>/{0,10,...,90}.mp4`.
+frame 0 through that clip to its end at 1920×1080 and 60 fps. The policy
+keeps its original action frequency while rendering captures intermediate physics
+steps. Videos are saved under
+`vids/<training run directory name>/<iteration>/<clip name>/0.mp4`.
 Earlier iterations are preserved; rerunning an iteration replaces its videos.
 Recordings use noise-free resets and the true robot mass, matching policy playback.
 Keep the training clips available on the recording machine.

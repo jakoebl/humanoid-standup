@@ -17,7 +17,7 @@ import cli_args  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
-parser.add_argument("--record-policy-dir", type=str, help="Record all clips at ten starting fractions.")
+parser.add_argument("--record-policy-dir", type=str, help="Record each clip from frame 0 at 1080p and 60 fps.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
 parser.add_argument(
@@ -97,6 +97,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import humanoid_standup.tasks  # noqa: F401
 from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import REFERENCE
+from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.position_tracking import position_tracking_targets
 
 # Load all training clips before Hydra constructs the environment config.
 REFERENCE.__init__(Path(__file__).resolve().parents[2] / "data/training", REFERENCE.dt, REFERENCE.device)
@@ -135,13 +136,16 @@ class KinematicsVisualization(gym.Wrapper):
         ))
         self.marker_indices = torch.arange(5, device=self.robot.device).repeat(env.unwrapped.num_envs)
         print("[INFO] Kinematics: spheres = clip targets; cubes = actual robot positions. "
-              "COM yellow, left/right wrist red/blue, left/right foot pink/green.")
+              "COM yellow, left/right wrist red/blue, left/right foot pink/green. "
+              "Above the standing CoM threshold, targets follow the actual left foot and stance yaw.")
 
     def update_markers(self):
         env = self.env.unwrapped
         frame_ids = REFERENCE.frame_ids_for_env(env).to(REFERENCE.device)
         targets = torch.cat((REFERENCE.get_com_pos(frame_ids)[:, None, :],
                              REFERENCE.get_end_effector_pos(frame_ids)), dim=1).to(self.robot.device)
+        height = env.cfg.rewards.com_tracking.params["upright_com_height"]
+        targets = position_tracking_targets(env, self.robot, frame_ids, targets, height)
         targets = targets + env.scene.env_origins[:, None, :]
         com = (self.robot.data.body_com_pos_w * self.masses[..., None]).sum(dim=1)
         com = com / self.masses.sum(dim=1, keepdim=True)
@@ -162,8 +166,8 @@ class KinematicsVisualization(gym.Wrapper):
         return result
 
 
-def record_policy_rollouts(env, runner, policy, output_dir):
-    """Record ten deterministic resets per clip, atomically replacing each MP4."""
+def record_policy_rollouts(env, runner, policy, output_dir, action_repeat=1):
+    """Record each clip from frame zero, holding actions between capture steps."""
     import math
     import tempfile
     import imageio.v2 as imageio
@@ -179,7 +183,7 @@ def record_policy_rollouts(env, runner, policy, output_dir):
     for clip_id, clip in enumerate(REFERENCE.paths):
         folder = output_dir / clip.stem
         folder.mkdir(parents=True, exist_ok=True)
-        for percent in range(0, 100, 10):
+        for percent in (0,):
             reset_cfg.params.update(clip_id=clip_id, start_fraction=percent / 100)
             raw.event_manager.set_term_cfg("reset_robot", reset_cfg)
             with torch.inference_mode():
@@ -200,7 +204,9 @@ def record_policy_rollouts(env, runner, policy, output_dir):
                                             pixelformat="yuv420p", macro_block_size=2) as writer:
                         for frame in range(steps + 1):
                             if frame:
-                                obs, _, _, _ = env.step(policy(obs))
+                                if (frame - 1) % action_repeat == 0:
+                                    action = policy(obs)
+                                obs, _, _, _ = env.step(action)
                             # Headless steps may skip rendering without RTX sensors.
                             # Flush physics/marker updates before reading the RGB annotator;
                             # render(recompute=True) alone can return its cached frame.
@@ -263,6 +269,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     print(f"[INFO] Playback samples uniformly from {REFERENCE.num_clips} training clips on each reset.")
     if args_cli.record_policy_dir:
         env_cfg.scene.num_envs = 1
+        env_cfg.viewer.resolution = (1920, 1080)
+        # Capture at 60 Hz while retaining the original policy action period.
+        original_decimation = env_cfg.decimation
+        recording_decimation = round(1 / (60 * env_cfg.sim.dt))
+        if (recording_decimation < 1
+                or abs(recording_decimation * env_cfg.sim.dt - 1 / 60) > 1e-9
+                or original_decimation % recording_decimation):
+            raise ValueError("60 fps recording requires compatible physics and policy timing.")
+        recording_action_repeat = original_decimation // recording_decimation
+        env_cfg.decimation = recording_decimation
+        env_cfg.sim.render_interval = recording_decimation
         env_cfg.observations.policy.enable_corruption = False
         env_cfg.events.reset_robot.params.update(joint_pos_noise=0.0, joint_vel_noise=0.0)
         # Record to the end without automatic resets contaminating the final frame.
@@ -309,7 +326,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     if args_cli.record_policy_dir:
         try:
-            record_policy_rollouts(env, runner, policy, Path(args_cli.record_policy_dir))
+            record_policy_rollouts(env, runner, policy, Path(args_cli.record_policy_dir),
+                                   action_repeat=recording_action_repeat)
         finally:
             env.close()
         return

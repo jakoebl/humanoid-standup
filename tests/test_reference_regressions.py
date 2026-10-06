@@ -129,7 +129,8 @@ try:
             body_com_pos_w=body_com, default_mass=torch.tensor([[1., 3.]]).expand(4, -1),
         ),
     )
-    result = terms.com_deviation(com_env, threshold=.5, asset_cfg=SceneEntityCfg('robot'))
+    result = terms.com_deviation(com_env, threshold=.5, asset_cfg=SceneEntityCfg('robot'),
+                                 upright_com_height=float('inf'))
     assert result.dtype == torch.bool and result.shape == (4,)
     assert result.tolist() == [False, False, True, True]
 finally:

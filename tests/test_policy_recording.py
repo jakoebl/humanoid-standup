@@ -18,6 +18,7 @@ class PolicyRecordingTest(unittest.TestCase):
                         if isinstance(node, ast.FunctionDef) and node.name == 'record_policy_rollouts')
         frames = []
         recordings = []
+        policy_observations = []
 
         class Writer:
             def __enter__(self):
@@ -82,9 +83,11 @@ class PolicyRecordingTest(unittest.TestCase):
                 sys.modules, {'imageio': imageio, 'imageio.v2': imageio_v2}):
             namespace['record_policy_rollouts'](
                 HeadlessEnv(), SimpleNamespace(alg=SimpleNamespace(policy=policy)),
-                lambda obs: obs, Path(directory))
-            self.assertEqual(len(list(Path(directory).rglob('*.mp4'))), 10)
-        self.assertEqual(recordings, [[0, 1, 2, 3]] * 10)
+                lambda obs: policy_observations.append(obs) or obs, Path(directory),
+                action_repeat=2)
+            self.assertEqual([p.name for p in Path(directory).rglob('*.mp4')], ['0.mp4'])
+        self.assertEqual(recordings, [[0, 1, 2, 3]])
+        self.assertEqual(policy_observations, [0, 2])
 
 
 if __name__ == '__main__':
