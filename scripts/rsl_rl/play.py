@@ -43,6 +43,7 @@ AppLauncher.add_app_launcher_args(parser)
 args_cli, hydra_args = parser.parse_known_args()
 # always enable cameras to record video
 if args_cli.video or args_cli.record_policy_dir:
+if args_cli.video or args_cli.record_policy_dir:
     args_cli.enable_cameras = True
 
 # clear out sys.argv for Hydra

@@ -1,6 +1,4 @@
 # Keep model checkpoints out of Git.
-model.pt
-model_*.pt
 vids
 outputs
 logs

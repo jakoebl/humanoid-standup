@@ -18,6 +18,8 @@ def reset_to_reference(
     random_start: bool = True,
     clip_id: int | None = None,
     start_fraction: float | None = None,
+    clip_id: int | None = None,
+    start_fraction: float | None = None,
     joint_pos_noise: float = 0.03,
     joint_vel_noise: float = 0.1,
     last_initial_frame: float = 1,
