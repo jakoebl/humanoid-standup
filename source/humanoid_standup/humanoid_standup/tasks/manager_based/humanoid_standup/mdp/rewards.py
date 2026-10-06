@@ -190,3 +190,21 @@ class standing_foot_displacement(ManagerTermBase):
         self._standing_reached |= upright
         distance = torch.linalg.vector_norm(feet - self._anchors, dim=-1).sum(dim=-1)
         return torch.where(self._standing_reached, distance, 0.)
+
+
+def standing_action_rate_l2(
+    env: ManagerBasedRLEnv,
+    threshold: float = UPRIGHT_COM_HEIGHT,
+    multiplier: float = 1.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Scale squared action changes while CoM height is at or above threshold.
+
+    Threshold is measured in meters above the environment origin. A multiplier
+    of 1 preserves the original penalty; 0 disables it while standing. Scaling
+    follows the current height, so falling below threshold restores the base cost.
+    """
+    penalty = torch.sum(torch.square(env.action_manager.action - env.action_manager.prev_action), dim=1)
+    asset: Articulation = env.scene[asset_cfg.name]
+    height = (_whole_body_com(asset) - env.scene.env_origins)[:, 2]
+    return torch.where(height >= threshold, penalty * multiplier, penalty)

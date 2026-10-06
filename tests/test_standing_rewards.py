@@ -218,3 +218,24 @@ for height in (.5, .9):
     torch.testing.assert_close(markers.positions, expected + scene.env_origins[0])
 assert refresh == ['fk', 'buffers', 'fk', 'buffers']
 print('PASS: optional reference markers share alignment, height gating and refreshed FK')
+
+# Action-rate scaling uses current local CoM height, including the threshold.
+original_com = asset.data.body_com_pos_w.clone()
+asset.data.body_com_pos_w[:, 0, 2] = scene.env_origins[:, 2] + torch.tensor([.5, .75, .9, .4])
+env.action_manager = types.SimpleNamespace(
+    action=torch.tensor([[1., 2.], [2., 3.], [3., 4.], [4., 5.]]),
+    prev_action=torch.tensor([[0., 1.], [0., 1.], [0., 1.], [0., 1.]]),
+)
+base_penalty = torch.tensor([2., 8., 18., 32.])
+action_rate = namespace['standing_action_rate_l2']
+torch.testing.assert_close(action_rate(env), base_penalty)
+for multiplier in (0., .5, 3.):
+    torch.testing.assert_close(action_rate(env, threshold=.75, multiplier=multiplier),
+                               base_penalty * torch.tensor([1., multiplier, multiplier, 1.]))
+torch.testing.assert_close(action_rate(env, threshold=1., multiplier=3.), base_penalty)
+asset.data.body_com_pos_w[:, 0, 2] = scene.env_origins[:, 2] + .4
+torch.testing.assert_close(action_rate(env, threshold=.75, multiplier=3.), base_penalty)
+env.action_manager.prev_action.copy_(env.action_manager.action)
+torch.testing.assert_close(action_rate(env, multiplier=3.), torch.zeros(4))
+asset.data.body_com_pos_w.copy_(original_com)
+print('PASS: standing action-rate scaling, inclusive/custom threshold, falling, and unchanged actions')
