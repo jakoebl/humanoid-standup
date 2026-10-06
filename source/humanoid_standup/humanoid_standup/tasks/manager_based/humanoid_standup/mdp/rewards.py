@@ -108,6 +108,41 @@ def end_effector_pos_target_exp(
     return torch.exp(-scale * torch.sum(torch.square(error), dim=(1, 2)))
 
 
+class end_effector_pos_tracking(ManagerTermBase):
+    """Optionally stop the selected end-effector reward after first standing."""
+
+    def __init__(self, cfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        asset = env.scene[cfg.params["asset_cfg"].name]
+        self._standing_reached = torch.zeros(env.num_envs, device=asset.device, dtype=torch.bool)
+
+    def reset(self, env_ids=None):
+        if env_ids is None:
+            env_ids = slice(None)
+        self._standing_reached[env_ids] = False
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        scale: float = 40.0,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+        upright_com_height: float = UPRIGHT_COM_HEIGHT,
+        reference_body_indices: tuple[int, ...] | None = None,
+        stop_when_standing: bool = False,
+    ) -> torch.Tensor:
+        reward = end_effector_pos_target_exp(
+            env, scale=scale, asset_cfg=asset_cfg,
+            upright_com_height=upright_com_height,
+            reference_body_indices=reference_body_indices,
+        )
+        if stop_when_standing:
+            asset = env.scene[asset_cfg.name]
+            height = (_whole_body_com(asset) - env.scene.env_origins)[:, 2]
+            self._standing_reached |= height >= upright_com_height
+            reward = torch.where(self._standing_reached, 0., reward)
+        return reward
+
+
 def com_pos_target_exp(
     env: ManagerBasedRLEnv,
     scale: float = 10.0,

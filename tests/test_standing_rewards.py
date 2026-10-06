@@ -75,6 +75,48 @@ leg_reward = namespace['end_effector_pos_target_exp'](env, asset_cfg=leg_cfg, re
 torch.testing.assert_close(leg_reward, torch.ones(4), atol=2e-5, rtol=2e-5)
 print('PASS: independent arm/leg tracking in upright and absolute coordinates')
 
+# Optional arm tracking stops per episode at first standing, with inclusive cutoff.
+class ManagerTermBase:
+    def __init__(self, cfg, env):
+        pass
+
+namespace['ManagerTermBase'] = ManagerTermBase
+arm_class = next(n for n in tree.body if isinstance(n, ast.ClassDef)
+                 and n.name == 'end_effector_pos_tracking')
+exec(compile(ast.Module(body=[arm_class], type_ignores=[]), str(path), 'exec'), namespace)
+env.num_envs = 4
+arm_cfg = types.SimpleNamespace(name='robot', body_ids=[0, 1])
+arm_term = namespace['end_effector_pos_tracking'](
+    types.SimpleNamespace(params={'asset_cfg': arm_cfg}), env)
+arm_params = dict(asset_cfg=arm_cfg, reference_body_indices=(0, 1), upright_com_height=.65)
+original_com = asset.data.body_com_pos_w.clone()
+asset.data.body_com_pos_w[:, 0, 2] = scene.env_origins[:, 2] + torch.tensor([.5, .65, .9, .4])
+baseline = namespace['end_effector_pos_target_exp'](env, **arm_params)
+torch.testing.assert_close(arm_term(env, **arm_params), baseline)
+torch.testing.assert_close(arm_term(env, stop_when_standing=True, **arm_params),
+                           baseline * torch.tensor([1., 0., 0., 1.]))
+# Falling does not resume tracking, and disabling the option preserves the reward.
+asset.data.body_com_pos_w[:, 0, 2] = scene.env_origins[:, 2] + .4
+baseline = namespace['end_effector_pos_target_exp'](env, **arm_params)
+torch.testing.assert_close(arm_term(env, stop_when_standing=True, **arm_params),
+                           baseline * torch.tensor([1., 0., 0., 1.]))
+torch.testing.assert_close(arm_term(env, **arm_params), baseline)
+# Partial resets resume only the selected environment; full resets clear all gates.
+arm_term.reset(torch.tensor([1]))
+torch.testing.assert_close(arm_term(env, stop_when_standing=True, **arm_params),
+                           baseline * torch.tensor([1., 1., 0., 1.]))
+arm_term.reset()
+torch.testing.assert_close(arm_term(env, stop_when_standing=True, **arm_params), baseline)
+# The gate uses the configured height rather than a hardcoded standing cutoff.
+asset.data.body_com_pos_w[:, 0, 2] = scene.env_origins[:, 2] + .75
+arm_params['upright_com_height'] = .8
+baseline = namespace['end_effector_pos_target_exp'](env, **arm_params)
+torch.testing.assert_close(arm_term(env, stop_when_standing=True, **arm_params), baseline)
+asset.data.body_com_pos_w[:, 0, 2] = scene.env_origins[:, 2] + .85
+torch.testing.assert_close(arm_term(env, stop_when_standing=True, **arm_params), torch.zeros(4))
+asset.data.body_com_pos_w.copy_(original_com)
+print('PASS: optional arm reward gate, inclusive/custom threshold, falling, and partial/full resets')
+
 # Exercise real termination functions with the same transforms and strict cutoffs.
 term_tree = ast.parse((path.parent / 'terminations.py').read_text())
 exec(compile(ast.Module(body=[n for n in term_tree.body if isinstance(n, ast.FunctionDef)],

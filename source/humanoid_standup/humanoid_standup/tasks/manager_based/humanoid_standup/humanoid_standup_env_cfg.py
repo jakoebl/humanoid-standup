@@ -135,7 +135,7 @@ class RewardsCfg:
     )
 
     arm_end_effector_tracking = RewTerm(
-        func=mdp.end_effector_pos_target_exp,
+        func=mdp.end_effector_pos_tracking,
         weight=0.75,
         params={
             "asset_cfg": SceneEntityCfg(
@@ -146,6 +146,7 @@ class RewardsCfg:
             "reference_body_indices": (0, 1),
             "scale": 40.0,
             "upright_com_height": UPRIGHT_COM_HEIGHT,
+            "stop_when_standing": False,
         },
     )
     leg_end_effector_tracking = RewTerm(

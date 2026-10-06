@@ -186,6 +186,15 @@ jitter and stand-up tracking after further training. Reward changes do not alter
 existing checkpoint behavior during playback. The G1 PD action scaling remains 0.25 about its default
 joint pose; it is an action parameterization, not a residual on the reference.
 
+To disable the arm end-effector tracking reward after first standing, append
+`env.rewards.arm_end_effector_tracking.params.stop_when_standing=true` to the
+training command. The option defaults to `false`. Standing means whole-body
+CoM height relative to the environment origin reaches the arm term's
+`upright_com_height` (currently 0.5 m). Once reached, that environment's arm
+reward stays zero until its episode resets, even if the robot falls below the
+threshold. Leg tracking, joint tracking, and tracking-failure terminations
+continue as configured.
+
 Observations contain only proprioceptive information (64 values): 29 joint
 positions and 29 joint velocities in action order, followed by pelvis angular
 velocity and projected gravity expressed in the pelvis frame. Finger joints,
