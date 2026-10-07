@@ -21,6 +21,13 @@ from . import mdp
 from .mdp.reference import REFERENCE, Reference
 from .mdp.position_tracking import UPRIGHT_COM_HEIGHT
 
+SCALE_FACTOR = 1 # Reference is 1
+SEPARATE_EE_REWARDS = True # Reference is False
+GUARANTEED_WHEN_STANDING = True # Reference is False
+ACTION_RATE_PENALTY_WEIGHT = -0.0025 # reference is -0.0025
+UPRIGHT_ACTION_RATE_PENALTY_MULTIPLIER = 1.0 # reference is 1.0
+JOINT_POSITION_TRACKING_WEIGHT = 0.65 # reference is 0.65
+JOINT_VELOCITY_TRACKING_WEIGHT = 0.10 # reference is 0.10
 ##
 # Pre-defined configs
 ##
@@ -124,50 +131,69 @@ class RewardsCfg:
     """Reward terms for the MDP."""
     joint_position_tracking = RewTerm(
         func=mdp.joint_pos_target_exp,
-        weight=0.65,
+        weight=JOINT_POSITION_TRACKING_WEIGHT,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(Reference.JOINT_NAMES)), "scale": 4.0, "upright_com_height": UPRIGHT_COM_HEIGHT},
     )
 
     joint_velocity_tracking = RewTerm(
         func=mdp.joint_vel_target_exp,
-        weight=0.10,
+        weight=JOINT_VELOCITY_TRACKING_WEIGHT,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(Reference.JOINT_NAMES)), "scale": 0.1},
     )
 
-    arm_end_effector_tracking = RewTerm(
-        func=mdp.end_effector_pos_tracking,
-        weight=0.75,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                body_names=list(Reference.END_EFFECTOR_NAMES[:2]),
-                preserve_order=True,
-            ),
-            "reference_body_indices": (0, 1),
-            "scale": 40.0,
-            "upright_com_height": UPRIGHT_COM_HEIGHT,
-            "stop_when_standing": True,
-        },
-    )
-    leg_end_effector_tracking = RewTerm(
-        func=mdp.end_effector_pos_target_exp,
-        weight=0.75,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                body_names=list(Reference.END_EFFECTOR_NAMES[2:]),
-                preserve_order=True,
-            ),
-            "reference_body_indices": (2, 3),
-            "scale": 40.0,
-            "upright_com_height": UPRIGHT_COM_HEIGHT,
-        },
-    )
+
+    if SEPARATE_EE_REWARDS:
+        end_effector_tracking = None
+        arm_end_effector_tracking = RewTerm(
+            func=mdp.end_effector_pos_tracking,
+            weight=0.75,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=list(Reference.END_EFFECTOR_NAMES[:2]),
+                    preserve_order=True,
+                ),
+                "reference_body_indices": (0, 1),
+                "scale": 40.0 * SCALE_FACTOR,
+                "upright_com_height": UPRIGHT_COM_HEIGHT,
+                "guaranteed_when_standing": GUARANTEED_WHEN_STANDING,
+            },
+        )
+        leg_end_effector_tracking = RewTerm(
+            func=mdp.end_effector_pos_target_exp,
+            weight=0.75,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=list(Reference.END_EFFECTOR_NAMES[2:]),
+                    preserve_order=True,
+                ),
+                "reference_body_indices": (2, 3),
+                "scale": 40.0 * SCALE_FACTOR,
+                "upright_com_height": UPRIGHT_COM_HEIGHT,
+            },
+        )
+    else:
+        arm_end_effector_tracking = None
+        leg_end_effector_tracking = None
+        end_effector_tracking = RewTerm(
+            func=mdp.end_effector_pos_target_exp,
+            weight=1.5,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    body_names=list(Reference.END_EFFECTOR_NAMES),
+                    preserve_order=True,
+                ),
+                "scale": 40.0 * SCALE_FACTOR,
+                "upright_com_height": UPRIGHT_COM_HEIGHT,
+            },
+        )
 
     com_tracking = RewTerm(
         func=mdp.com_pos_target_exp,
         weight=0.10,
-        params={"asset_cfg": SceneEntityCfg("robot"), "scale": 10.0, "upright_com_height": UPRIGHT_COM_HEIGHT},
+        params={"asset_cfg": SceneEntityCfg("robot"), "scale": 10.0 * SCALE_FACTOR, "upright_com_height": UPRIGHT_COM_HEIGHT},
     )
 
     standing_foot_movement_penalty = RewTerm(
@@ -186,8 +212,8 @@ class RewardsCfg:
     # Penalize rapid changes in raw joint targets; compensated to a per-step cost below.
     action_rate_penalty = RewTerm(
         func=mdp.standing_action_rate_l2,
-        weight=-0.0025,
-        params={"threshold": UPRIGHT_COM_HEIGHT, "multiplier": 1.0},
+        weight=ACTION_RATE_PENALTY_WEIGHT,
+        params={"threshold": UPRIGHT_COM_HEIGHT, "multiplier": UPRIGHT_ACTION_RATE_PENALTY_MULTIPLIER},
     )
 
 

@@ -109,7 +109,7 @@ def end_effector_pos_target_exp(
 
 
 class end_effector_pos_tracking(ManagerTermBase):
-    """Optionally stop the selected end-effector reward after first standing."""
+    """Optionally guarantee the maximum end-effector reward after first standing."""
 
     def __init__(self, cfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
@@ -128,18 +128,18 @@ class end_effector_pos_tracking(ManagerTermBase):
         asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
         upright_com_height: float = UPRIGHT_COM_HEIGHT,
         reference_body_indices: tuple[int, ...] | None = None,
-        stop_when_standing: bool = False,
+        guaranteed_when_standing: bool = False,
     ) -> torch.Tensor:
         reward = end_effector_pos_target_exp(
             env, scale=scale, asset_cfg=asset_cfg,
             upright_com_height=upright_com_height,
             reference_body_indices=reference_body_indices,
         )
-        if stop_when_standing:
+        if guaranteed_when_standing:
             asset = env.scene[asset_cfg.name]
             height = (_whole_body_com(asset) - env.scene.env_origins)[:, 2]
             self._standing_reached |= height >= upright_com_height
-            reward = torch.where(self._standing_reached, 0., reward)
+            reward = torch.where(self._standing_reached, 1., reward)
         return reward
 
 
