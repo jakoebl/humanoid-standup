@@ -21,9 +21,9 @@ from . import mdp
 from .mdp.reference import REFERENCE, Reference
 from .mdp.position_tracking import UPRIGHT_COM_HEIGHT
 
-SCALE_FACTOR = 1 # Reference is 1
-SEPARATE_EE_REWARDS = True # Reference is False
-GUARANTEED_WHEN_STANDING = True # Reference is False
+SCALE_FACTOR = 0.25 # Reference is 1
+SEPARATE_EE_REWARDS = False # Reference is False
+GUARANTEED_WHEN_STANDING = False # Reference is False
 ACTION_RATE_PENALTY_WEIGHT = -0.0025 # reference is -0.0025
 UPRIGHT_ACTION_RATE_PENALTY_MULTIPLIER = 1.0 # reference is 1.0
 JOINT_POSITION_TRACKING_WEIGHT = 0.65 # reference is 0.65
@@ -193,7 +193,7 @@ class RewardsCfg:
     com_tracking = RewTerm(
         func=mdp.com_pos_target_exp,
         weight=0.10,
-        params={"asset_cfg": SceneEntityCfg("robot"), "scale": 10.0 * SCALE_FACTOR, "upright_com_height": UPRIGHT_COM_HEIGHT},
+        params={"asset_cfg": SceneEntityCfg("robot"), "scale": 10.0, "upright_com_height": UPRIGHT_COM_HEIGHT},
     )
 
     standing_foot_movement_penalty = RewTerm(
