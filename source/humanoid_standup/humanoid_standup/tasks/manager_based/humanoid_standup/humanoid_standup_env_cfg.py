@@ -24,10 +24,10 @@ from .mdp.position_tracking import UPRIGHT_COM_HEIGHT
 SCALE_FACTOR = 1 # Reference is 1
 SEPARATE_EE_REWARDS = False # Reference is False
 GUARANTEED_WHEN_STANDING = False # Reference is False
-ACTION_RATE_PENALTY_WEIGHT = -0.0025 # reference is -0.0025
-UPRIGHT_ACTION_RATE_PENALTY_MULTIPLIER = 1.0 # reference is 1.0
+ACTION_RATE_PENALTY_WEIGHT = -0.0025*4 # reference is -0.0025
+UPRIGHT_ACTION_RATE_PENALTY_MULTIPLIER = 3.0 # reference is 1.0
 JOINT_POSITION_TRACKING_WEIGHT = 0.65 # reference is 0.65
-JOINT_VELOCITY_TRACKING_WEIGHT = 0.10*20 # reference is 0.10
+JOINT_VELOCITY_TRACKING_WEIGHT = 0.10 # reference is 0.10
 ##
 # Pre-defined configs
 ##
