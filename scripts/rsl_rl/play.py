@@ -102,7 +102,11 @@ from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import 
 from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.position_tracking import position_tracking_targets
 
 # Load all training clips before Hydra constructs the environment config.
-REFERENCE.__init__(Path(__file__).resolve().parents[2] / "data/training", REFERENCE.dt, REFERENCE.device)
+IS_BEYOND_MIMIC = args_cli.task is not None and args_cli.task.split(":")[-1].startswith("BeyondMimic")
+if not IS_BEYOND_MIMIC:
+    REFERENCE.__init__(Path(__file__).resolve().parents[2] / "data/training", REFERENCE.dt, REFERENCE.device)
+elif args_cli.record_policy_dir:
+    raise ValueError("BeyondMimic playback supports --video; --record-policy-dir is for Humanoid-Standup clips.")
 
 
 class KinematicsVisualization(gym.Wrapper):
@@ -265,12 +269,21 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # create isaac environment
     # Evaluate and validate reference kinematics at the true robot mass.
-    env_cfg.curriculum.robot_mass = None
+    if not IS_BEYOND_MIMIC:
+        env_cfg.curriculum.robot_mass = None
 
     # Let playback continue through tracking errors until the reference finishes.
-    env_cfg.terminations.ee_deviation = None
-    env_cfg.terminations.com_deviation = None
-    print(f"[INFO] Playback samples uniformly from {REFERENCE.num_clips} training clips on each reset.")
+    if IS_BEYOND_MIMIC:
+        env_cfg.observations.policy.enable_corruption = False
+        env_cfg.events.push_robot = None
+        env_cfg.commands.motion.sampling_mode = "start"
+        env_cfg.commands.motion.pose_range = {}
+        env_cfg.commands.motion.velocity_range = {}
+        env_cfg.commands.motion.joint_position_range = (0.0, 0.0)
+    else:
+        env_cfg.terminations.ee_deviation = None
+        env_cfg.terminations.com_deviation = None
+        print(f"[INFO] Playback samples uniformly from {REFERENCE.num_clips} training clips on each reset.")
     if args_cli.record_policy_dir:
         env_cfg.scene.num_envs = 1
         env_cfg.viewer.resolution = (1920, 1080)
@@ -298,7 +311,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env = multi_agent_to_single_agent(env)
 
     # Update markers before RecordVideo captures each frame.
-    env = KinematicsVisualization(env)
+    if not IS_BEYOND_MIMIC:
+        env = KinematicsVisualization(env)
 
     # wrap for video recording
     if args_cli.video:

@@ -144,6 +144,74 @@ Some examples of packages that can likely be excluded are:
 ```
 ## DeepMimic-style stand-up training
 
+### BeyondMimic task
+
+`BeyondMimic` is a separate Isaac Lab task matching the customized mjlab G1
+tracking setup. Its actor uses 93 values (IMU linear/angular velocity, 29 relative
+joint positions, 29 relative joint velocities, and 29 previous actions). The
+critic retains 286 values including reference commands, anchor transforms, and
+body poses. Actor noise and encoder bias follow mjlab's settings. Actions use
+the same per-motor scales, gains, torque limits, and nominal bent-knee pose.
+Training defaults to 2048 environments, 200 Hz physics, and 50 Hz control.
+PPO uses 24 steps per rollout, ELU networks of size 512/256/128, observation
+normalization, and 30000 iterations. The eight reward terms exclude joint-limit
+penalties. Ground contacts are permitted; tracking failure thresholds and
+adaptive reference-state initialization follow the mjlab setup. Clip completion
+resamples the reference state, rather than terminating the episode.
+
+The prepared stand-up reference is `data/beyondmimic/stand_up_lying_V2.npz`.
+To generate another reference, use the Isaac Sim environment:
+
+```bash
+/isaac-sim/python.sh scripts/precompute_beyond_mimic.py \
+  data/unprocessed/stand_up_lying_V2.csv \
+  data/beyondmimic/stand_up_lying_V2.npz \
+  --input-fps 120 --output-fps 50 --headless
+```
+
+The exporter also accepts the headerless clips in `data/mjlab`. Set their actual
+input FPS. It recomputes body poses on the Isaac Lab asset and stores joint/body
+names; existing mjlab NPZs are rejected because their body order and asset differ.
+
+Start a fresh policy inside the Isaac Lab container:
+
+```bash
+cd /workspace/humanoid_standup
+/isaac-sim/python.sh scripts/rsl_rl/train.py \
+  --task BeyondMimic --headless --num_envs 2048 --run_name beyond_mimic
+```
+
+Use `env.commands.motion.motion_file=/absolute/path/to/clip.npz` to select another
+prepared clip. This task currently tracks one clip per run, matching mjlab's
+motion command. Its checkpoints live under `logs/rsl_rl/beyond_mimic`; existing
+mjlab or `Humanoid-Standup` checkpoints cannot be resumed directly.
+
+```bash
+/isaac-sim/python.sh scripts/rsl_rl/play.py \
+  --task BeyondMimic-Play --num_envs 1 \
+  --checkpoint logs/rsl_rl/beyond_mimic/<run>/model_<iteration>.pt
+```
+
+Playback starts at frame 0 and uses a native Isaac Sim window. Add `--video
+--video_length 259 --headless` to record a full reference-length rollout. The
+existing `record_models.py` batch recorder remains specific to `Humanoid-Standup`.
+
+PhysX uses the repository's G1 USD asset, including finger links. Motor control,
+reference math, and network inputs match the custom task; dynamics and collision
+geometry are simulator-specific. Self-contact is counted over the 30 main bodies
+using robot-only filtered contact histories, so ground contact is not penalized.
+Finger-only contacts are excluded. Friction uses PhysX material buckets.
+See the task's `PROVENANCE.md` for the upstream source and adaptations.
+
+Validation:
+
+```bash
+/isaac-sim/python.sh tests/test_beyond_mimic_motion.py
+/isaac-sim/python.sh scripts/check_beyond_mimic.py --headless
+```
+
+### Humanoid-Standup task
+
 Training loads every `*.csv` directly in `/workspace/humanoid_standup/data/training`
 (`data/training` in the host checkout). Put processed 120 FPS clips with precomputed
 end-effector and COM columns there. Each environment independently selects a clip
