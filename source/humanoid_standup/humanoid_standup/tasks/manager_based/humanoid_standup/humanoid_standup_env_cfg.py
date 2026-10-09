@@ -27,7 +27,7 @@ GUARANTEED_WHEN_STANDING = False # Reference is False
 ACTION_RATE_PENALTY_WEIGHT = -0.0025*4 # reference is -0.0025
 UPRIGHT_ACTION_RATE_PENALTY_MULTIPLIER = 3.0 # reference is 1.0
 JOINT_POSITION_TRACKING_WEIGHT = 0.65 # reference is 0.65
-JOINT_VELOCITY_TRACKING_WEIGHT = 0.10 # reference is 0.10
+JOINT_VELOCITY_TRACKING_WEIGHT = 0.10*5 # reference is 0.10
 ##
 # Pre-defined configs
 ##
