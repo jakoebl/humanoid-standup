@@ -15,6 +15,7 @@ from isaaclab.app import AppLauncher
 
 # local imports
 import cli_args  # isort: skip
+from live_log import latest_iteration  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
@@ -252,7 +253,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             print(f"  {index:2d}. {clip_path.name} | {frames} frames | {(frames - 1) * REFERENCE.dt:.2f} s")
         print("[INFO] Each environment samples a clip uniformly on reset.")
     print("=" * 80, flush=True)
-    runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=IS_BEYOND_MIMIC)
+    with latest_iteration(runner):
+        runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=IS_BEYOND_MIMIC)
 
     print(f"Training time: {round(time.time() - start_time, 2)} seconds")
 
