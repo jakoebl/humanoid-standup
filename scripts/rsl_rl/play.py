@@ -18,6 +18,8 @@ import cli_args  # isort: skip
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--record-policy-dir", type=str, help="Record each clip from frame 0 at 1080p and 60 fps.")
+parser.add_argument("--record-policy-repetitions", type=int, default=1,
+                    help="Record this many rollouts per clip, each starting at frame 0.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
 parser.add_argument(
@@ -166,12 +168,14 @@ class KinematicsVisualization(gym.Wrapper):
         return result
 
 
-def record_policy_rollouts(env, runner, policy, output_dir, action_repeat=1):
+def record_policy_rollouts(env, runner, policy, output_dir, action_repeat=1, repetitions=1):
     """Record each clip from frame zero, holding actions between capture steps."""
     import math
     import tempfile
     import imageio.v2 as imageio
 
+    if repetitions < 1:
+        raise ValueError("Recording repetitions must be positive.")
     raw = env.unwrapped
     reset_cfg = raw.event_manager.get_term_cfg("reset_robot")
     if version.parse(installed_version) >= version.parse("4.0.0"):
@@ -183,8 +187,8 @@ def record_policy_rollouts(env, runner, policy, output_dir, action_repeat=1):
     for clip_id, clip in enumerate(REFERENCE.paths):
         folder = output_dir / clip.stem
         folder.mkdir(parents=True, exist_ok=True)
-        for percent in (0,):
-            reset_cfg.params.update(clip_id=clip_id, start_fraction=percent / 100)
+        for repetition in range(repetitions):
+            reset_cfg.params.update(clip_id=clip_id, start_fraction=0.0)
             raw.event_manager.set_term_cfg("reset_robot", reset_cfg)
             with torch.inference_mode():
                 obs, _ = env.reset()
@@ -195,7 +199,7 @@ def record_policy_rollouts(env, runner, policy, output_dir, action_repeat=1):
                 raw.render()
                 for _ in range(10):
                     raw.sim.render()
-                output = folder / f"{percent}.mp4"
+                output = folder / f"{repetition}.mp4"
                 fd, temporary = tempfile.mkstemp(suffix=".mp4", prefix=".record-", dir=folder)
                 os.close(fd)
                 try:
@@ -327,7 +331,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if args_cli.record_policy_dir:
         try:
             record_policy_rollouts(env, runner, policy, Path(args_cli.record_policy_dir),
-                                   action_repeat=recording_action_repeat)
+                                   action_repeat=recording_action_repeat,
+                                   repetitions=args_cli.record_policy_repetitions)
         finally:
             env.close()
         return

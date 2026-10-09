@@ -12,6 +12,12 @@ from unittest.mock import patch
 
 class PolicyRecordingTest(unittest.TestCase):
     def test_headless_frames_follow_physics(self):
+        self.check_recordings(repetitions=1)
+
+    def test_ten_rollouts_restart_at_frame_zero(self):
+        self.check_recordings(repetitions=10)
+
+    def check_recordings(self, repetitions):
         source = Path(__file__).resolve().parents[1] / 'scripts/rsl_rl/play.py'
         tree = ast.parse(source.read_text())
         function = next(node for node in tree.body
@@ -19,6 +25,7 @@ class PolicyRecordingTest(unittest.TestCase):
         frames = []
         recordings = []
         policy_observations = []
+        resets = []
 
         class Writer:
             def __enter__(self):
@@ -49,6 +56,7 @@ class PolicyRecordingTest(unittest.TestCase):
                 self.visible_pose = self.pose
 
             def reset(self):
+                resets.append(dict(self.event_manager.get_term_cfg('reset_robot').params))
                 self.pose = 0
                 return 0, {}
 
@@ -84,10 +92,12 @@ class PolicyRecordingTest(unittest.TestCase):
             namespace['record_policy_rollouts'](
                 HeadlessEnv(), SimpleNamespace(alg=SimpleNamespace(policy=policy)),
                 lambda obs: policy_observations.append(obs) or obs, Path(directory),
-                action_repeat=2)
-            self.assertEqual([p.name for p in Path(directory).rglob('*.mp4')], ['0.mp4'])
-        self.assertEqual(recordings, [[0, 1, 2, 3]])
-        self.assertEqual(policy_observations, [0, 2])
+                action_repeat=2, repetitions=repetitions)
+            self.assertEqual({p.name for p in Path(directory).rglob('*.mp4')},
+                             {f'{i}.mp4' for i in range(repetitions)})
+        self.assertEqual(recordings, [[0, 1, 2, 3]] * repetitions)
+        self.assertEqual(policy_observations, [0, 2] * repetitions)
+        self.assertEqual(resets, [{'clip_id': 0, 'start_fraction': 0.0}] * repetitions)
 
 
 if __name__ == '__main__':

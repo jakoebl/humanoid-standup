@@ -18,9 +18,15 @@ def main():
     parser.add_argument("--checkpoint", type=Path, help="Record the policy on every training clip.")
     parser.add_argument("--iteration", type=int, help="Iteration subfolder; defaults to model_<iteration>.pt number.")
     parser.add_argument("--training-name", help="Output directory name; defaults to the checkpoint run name.")
+    parser.add_argument("--repetitions", type=int, default=1,
+                        help="Number of policy recordings per clip, each from frame 0 (default: 1).")
     parser.add_argument("--task", default="Humanoid-Standup")
     parser.add_argument("--agent", default="rsl_rl_cfg_entry_point")
     args = parser.parse_args()
+    if args.repetitions < 1:
+        parser.error("Repetitions must be positive.")
+    if args.repetitions != 1 and not args.checkpoint:
+        parser.error("--repetitions requires --checkpoint.")
     project = Path(__file__).resolve().parents[1]
     python = "/isaac-sim/python.sh" if Path("/isaac-sim/python.sh").exists() else sys.executable
     if args.checkpoint:
@@ -41,7 +47,8 @@ def main():
         command = [python, str(project / "scripts/rsl_rl/play.py"),
                    "--checkpoint", str(checkpoint), "--task", args.task, "--agent", args.agent,
                    "--num_envs", "1", "--device", args.device,
-                   "--record-policy-dir", str(project / "vids" / name / str(iteration))]
+                   "--record-policy-dir", str(project / "vids" / name / str(iteration)),
+                   "--record-policy-repetitions", str(args.repetitions)]
         if not args.gui:
             command.append("--headless")
         return subprocess.call(command)

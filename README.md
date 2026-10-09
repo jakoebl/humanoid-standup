@@ -344,10 +344,13 @@ Run the standalone batch recorder in your Isaac Sim environment:
 
 ```bash
 # Scan all runs under the project's logs directory.
-python scripts/record_models.py
+python scripts/record_models.py --last-three
 
 # Record only one training run.
-python scripts/record_models.py logs/rsl_rl/humanoid_standup/<run>
+python scripts/record_models.py logs/rsl_rl/humanoid_standup/<run> --last-three
+
+# Record the latest checkpoint ten times per clip, each starting from frame 0.
+python scripts/record_models.py logs/rsl_rl/humanoid_standup/<run> --last
 
 # Preview selected checkpoints without starting the simulator.
 python scripts/record_models.py --dry-run
@@ -356,6 +359,10 @@ python scripts/record_models.py --dry-run
 The script selects the latest three `model_<iteration>.pt` checkpoints per training run
 by iteration number and calls `scripts/record.py` sequentially for each checkpoint.
 Runs with fewer than three checkpoints record all available checkpoints.
+`--last-three` is the default when neither selection flag is supplied. `--last`
+instead selects the highest-numbered checkpoint per run and records ten separate
+rollouts for every training clip. Each rollout resets the environment and policy
+state at frame 0; videos are named `0.mp4` through `9.mp4` in the clip folder.
 Training saves checkpoints for offline recording and no longer starts these recordings.
 The existing optional `--video` training flag still enables its original Gym video capture.
 

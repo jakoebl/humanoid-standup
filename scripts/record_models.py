@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record the latest three checkpoints per run from frame 0 at 1080p/60 fps using record.py."""
+"""Record the latest three checkpoints, or the latest checkpoint ten times, per run."""
 
 import argparse
 import os
@@ -12,8 +12,8 @@ import sys
 PROJECT = Path(__file__).resolve().parents[1]
 
 
-def find_checkpoints(logs):
-    """Find the latest three checkpoints per run, sorted by numeric iteration."""
+def find_checkpoints(logs, count=3):
+    """Find the latest checkpoints per run, sorted by numeric iteration."""
     runs = {}
     for path in logs.rglob("model_*.pt"):
         match = re.fullmatch(r"model_(\d+)\.pt", path.name)
@@ -21,7 +21,7 @@ def find_checkpoints(logs):
             runs.setdefault(path.parent, []).append((path, int(match[1])))
     return [checkpoint
             for run in sorted(runs, key=str)
-            for checkpoint in sorted(runs[run], key=lambda item: item[1])[-3:]]
+            for checkpoint in sorted(runs[run], key=lambda item: item[1])[-count:]]
 
 
 def main():
@@ -33,11 +33,16 @@ def main():
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--gui", action="store_true")
     parser.add_argument("--dry-run", action="store_true", help="Print commands without starting Isaac Sim.")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--last-three", action="store_true",
+                      help="Record the latest three checkpoints once each (default).")
+    mode.add_argument("--last", action="store_true",
+                      help="Record the latest checkpoint ten times per clip, each starting at frame 0.")
     args = parser.parse_args()
     logs = args.logs.expanduser().resolve()
     if not logs.is_dir():
         parser.error(f"Logs directory not found: {logs}")
-    checkpoints = find_checkpoints(logs)
+    checkpoints = find_checkpoints(logs, count=1 if args.last else 3)
     if not checkpoints:
         parser.error(f"No model_<iteration>.pt checkpoints found in {logs}")
 
@@ -59,6 +64,8 @@ def main():
                    "--checkpoint", str(checkpoint), "--iteration", str(iteration),
                    "--training-name", checkpoint.parent.name, "--task", args.task,
                    "--agent", args.agent, "--device", args.device]
+        if args.last:
+            command.extend(["--repetitions", "10"])
         if args.gui:
             command.append("--gui")
         if args.dry_run:
