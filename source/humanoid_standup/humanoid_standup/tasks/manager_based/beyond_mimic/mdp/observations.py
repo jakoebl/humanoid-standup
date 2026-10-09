@@ -16,6 +16,11 @@ def imu_lin_vel(env):
     return env.scene["imu"].data.lin_vel_b
 
 
+def imu_projected_gravity(env):
+    """Unit gravity direction in the IMU frame, rather than raw specific force."""
+    return env.scene["imu"].data.projected_gravity_b
+
+
 def imu_ang_vel(env):
     return env.scene["imu"].data.ang_vel_b
 

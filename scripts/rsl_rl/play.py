@@ -102,8 +102,8 @@ from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import 
 from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.position_tracking import position_tracking_targets
 
 # Load all training clips before Hydra constructs the environment config.
-IS_BEYOND_MIMIC = args_cli.task is not None and args_cli.task.split(":")[-1].startswith("BeyondMimic")
-if not IS_BEYOND_MIMIC:
+IS_TRACKING_TASK = args_cli.task is not None and args_cli.task.split(":")[-1].startswith(("BeyondMimic", "Mimic-Multiclip"))
+if not IS_TRACKING_TASK:
     REFERENCE.__init__(Path(__file__).resolve().parents[2] / "data/training", REFERENCE.dt, REFERENCE.device)
 elif args_cli.record_policy_dir:
     raise ValueError("BeyondMimic playback supports --video; --record-policy-dir is for Humanoid-Standup clips.")
@@ -269,11 +269,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # create isaac environment
     # Evaluate and validate reference kinematics at the true robot mass.
-    if not IS_BEYOND_MIMIC:
+    if not IS_TRACKING_TASK:
         env_cfg.curriculum.robot_mass = None
 
     # Let playback continue through tracking errors until the reference finishes.
-    if IS_BEYOND_MIMIC:
+    if IS_TRACKING_TASK:
         env_cfg.observations.policy.enable_corruption = False
         env_cfg.events.push_robot = None
         env_cfg.commands.motion.sampling_mode = "start"
@@ -311,7 +311,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env = multi_agent_to_single_agent(env)
 
     # Update markers before RecordVideo captures each frame.
-    if not IS_BEYOND_MIMIC:
+    if not IS_TRACKING_TASK:
         env = KinematicsVisualization(env)
 
     # wrap for video recording

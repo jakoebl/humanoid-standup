@@ -32,6 +32,7 @@ class MotionLoader:
     def __init__(self, motion_file, body_indexes, joint_names, body_names, fps, device="cpu"):
         from ..motion_data import load_motion
         data = load_motion(motion_file, joint_names, body_names, fps)
+        self.paths = (str(motion_file),)
         self.fps = data["fps"]
         for key in ("joint_pos", "joint_vel"):
             setattr(self, key, torch.tensor(data[key], dtype=torch.float32, device=device))
@@ -72,10 +73,7 @@ class MotionCommand(CommandTerm):
 
         from ..constants import JOINT_NAMES
         self.joint_indexes = self.robot.find_joints(JOINT_NAMES, preserve_order=True)[0]
-        self.motion = MotionLoader(
-            cfg.motion_file, self.body_indexes, self.robot.joint_names, self.robot.body_names,
-            fps=1 / env.step_dt, device=self.device,
-        )
+        self.motion = self._load_motion(env)
         self.time_steps = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         self.body_pos_relative_w = torch.zeros(self.num_envs, len(cfg.body_names), 3, device=self.device)
         self.body_quat_relative_w = torch.zeros(self.num_envs, len(cfg.body_names), 4, device=self.device)
@@ -100,6 +98,12 @@ class MotionCommand(CommandTerm):
         self.metrics["sampling_entropy"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["sampling_top1_prob"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["sampling_top1_bin"] = torch.zeros(self.num_envs, device=self.device)
+
+    def _load_motion(self, env):
+        return MotionLoader(
+            self.cfg.motion_file, self.body_indexes, self.robot.joint_names, self.robot.body_names,
+            fps=1 / env.step_dt, device=self.device,
+        )
 
     @property
     def command(self) -> torch.Tensor:  # TODO Consider again if this is the best observation
@@ -244,7 +248,7 @@ class MotionCommand(CommandTerm):
         self.metrics["sampling_top1_prob"][:] = pmax
         self.metrics["sampling_top1_bin"][:] = imax.float() / self.bin_count
 
-    def _resample_command(self, env_ids: Sequence[int]):
+    def _sample_frames(self, env_ids: Sequence[int]):
         if len(env_ids) == 0:
             return
         if self.cfg.sampling_mode == "start":
@@ -253,6 +257,11 @@ class MotionCommand(CommandTerm):
             self.time_steps[env_ids] = torch.randint(self.motion.time_step_total, (len(env_ids),), device=self.device)
         else:
             self._adaptive_sampling(env_ids)
+
+    def _resample_command(self, env_ids: Sequence[int]):
+        if len(env_ids) == 0:
+            return
+        self._sample_frames(env_ids)
 
         root_pos = self.body_pos_w[:, 0].clone()
         root_ori = self.body_quat_w[:, 0].clone()

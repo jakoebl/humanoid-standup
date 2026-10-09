@@ -147,10 +147,15 @@ Some examples of packages that can likely be excluded are:
 ### BeyondMimic task
 
 `BeyondMimic` is a separate Isaac Lab task matching the customized mjlab G1
-tracking setup. Its actor uses 93 values (IMU linear/angular velocity, 29 relative
+tracking setup. Its actor uses 93 values (IMU projected gravity/angular velocity, 29 relative
 joint positions, 29 relative joint velocities, and 29 previous actions). The
-critic retains 286 values including reference commands, anchor transforms, and
-body poses. Actor noise and encoder bias follow mjlab's settings. Actions use
+critic retains 286 values including reference commands, anchor transforms, body
+poses, and IMU linear velocity. Projected gravity is a unit downward vector in the
+IMU frame, with actor training noise of ±0.05 per component. Deployment must supply
+the same gravity estimate, rather than raw accelerometer measurements (which also
+contain motion acceleration). This replaces the previous actor velocity input;
+train a fresh policy even though its input dimension is unchanged. Other actor
+noise and encoder bias follow mjlab's settings. Actions use
 the same per-motor scales, gains, torque limits, and nominal bent-knee pose.
 Training defaults to 2048 environments, 200 Hz physics, and 50 Hz control.
 PPO uses 24 steps per rollout, ELU networks of size 512/256/128, observation
@@ -453,4 +458,54 @@ To record a single checkpoint:
 
 ```bash
 python scripts/record.py --checkpoint logs/rsl_rl/humanoid_standup/<run>/model_1000.pt
+```
+
+### Mimic-Multiclip task
+
+`Mimic-Multiclip` shares BeyondMimic's gravity-based 93-value actor, 286-value
+critic, robot, actions, rewards, and PPO settings. It loads all prepared `*.npz`
+files directly in `data/beyondmimic` (sorted by filename). Each environment selects
+clips uniformly at reset and clip completion. Starting frames use independent
+per-clip adaptive failure histograms, so long or difficult clips do not receive
+more clip-selection probability. Different clip lengths are supported; reference
+frames never advance into a neighboring clip. One clip also works.
+
+Prepare additional clips with `scripts/precompute_beyond_mimic.py` as described
+above; all references must use the same robot and 50 Hz control rate. Raw CSVs and
+unnamed mjlab NPZ files cannot be used directly. The current directory contains
+only the prepared V2 clip; add other prepared references for multi-clip training.
+
+```bash
+cd /workspace/humanoid_standup
+/isaac-sim/python.sh scripts/rsl_rl/train.py \
+  --task Mimic-Multiclip --headless --num_envs 2048 --run_name multiclip
+```
+
+Override `env.commands.motion.motion_directory=/absolute/path/to/clips`, or use
+an explicit list (which takes precedence over the directory):
+`'env.commands.motion.motion_files=[/data/first.npz,/data/second.npz]'`.
+The resolved file list is saved in `params/training_clips.yaml`. Runs are stored
+under `logs/rsl_rl/mimic_multiclip`. Keep the clip library unchanged when resuming.
+
+```bash
+/isaac-sim/python.sh scripts/rsl_rl/play.py \
+  --task Mimic-Multiclip-Play --num_envs 1 \
+  --checkpoint logs/rsl_rl/mimic_multiclip/<run>/model_<iteration>.pt \
+  env.commands.motion.play_clip_index=0
+```
+
+Playback selects the zero-based index in the resolved file list, starts at frame
+0, and hides debug arrows. Use `--video --video_length 259 --headless` for video;
+adjust the length to the selected clip. Set `play_clip_index=null` to randomly
+select clips at resets. The existing `record_models.py` does not support this task.
+
+The actor receives no clip identity or reference trajectory. Use compatible
+stand-up variations; different intended behaviors from indistinguishable states
+would need an additional deployable command. Critic reference observations remain
+available during training.
+
+Run the unequal-length multi-clip integration check with:
+
+```bash
+/isaac-sim/python.sh scripts/check_mimic_multiclip.py --headless
 ```

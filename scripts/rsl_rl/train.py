@@ -109,8 +109,8 @@ import humanoid_standup.tasks  # noqa: F401
 from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import REFERENCE
 
 # Update the shared reference before Hydra constructs the environment config.
-IS_BEYOND_MIMIC = args_cli.task is not None and args_cli.task.split(":")[-1].startswith("BeyondMimic")
-if not IS_BEYOND_MIMIC:
+IS_TRACKING_TASK = args_cli.task is not None and args_cli.task.split(":")[-1].startswith(("BeyondMimic", "Mimic-Multiclip"))
+if not IS_TRACKING_TASK:
     REFERENCE.__init__(Path(__file__).resolve().parents[2] / "data/training", REFERENCE.dt, REFERENCE.device)
 
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -225,7 +225,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         runner.load(resume_path)
         # RSL-RL checkpoints store learning iteration, but not environment counters.
         # Restore the mass schedule before resetting every environment for rollout.
-        if not IS_BEYOND_MIMIC:
+        if not IS_TRACKING_TASK:
             env.unwrapped.mass_curriculum_step_offset = (
                 runner.current_learning_iteration * agent_cfg.num_steps_per_env
             )
@@ -234,17 +234,22 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
-    if IS_BEYOND_MIMIC:
-        dump_yaml(os.path.join(log_dir, "params", "training_clips.yaml"),
-                  {"dt": env_cfg.sim.dt * env_cfg.decimation, "clips": [env_cfg.commands.motion.motion_file]})
+    if IS_TRACKING_TASK:
+        motion = env.unwrapped.command_manager.get_term("motion").motion
+        clip_paths = list(motion.paths)
+        reference_dt = env_cfg.sim.dt * env_cfg.decimation
     else:
-        dump_yaml(os.path.join(log_dir, "params", "training_clips.yaml"),
-                  {"dt": REFERENCE.dt, "clips": [str(path) for path in REFERENCE.paths]})
+        clip_paths = [str(path) for path in REFERENCE.paths]
+        reference_dt = REFERENCE.dt
+    dump_yaml(
+        os.path.join(log_dir, "params", "training_clips.yaml"),
+        {"dt": reference_dt, "clips": clip_paths},
+    )
 
     # run training
     print("\n" + "=" * 80)
-    if IS_BEYOND_MIMIC:
-        print(f"[INFO] BeyondMimic reference: {env_cfg.commands.motion.motion_file}")
+    if IS_TRACKING_TASK:
+        print(f"[INFO] Training reference clips: {len(clip_paths)}")
         print("[INFO] Adaptive reference-state initialization; 93-value actor and 286-value critic.")
     else:
         print(f"[INFO] Training clips: {REFERENCE.num_clips}")
@@ -254,7 +259,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print("[INFO] Each environment samples a clip uniformly on reset.")
     print("=" * 80, flush=True)
     with latest_iteration(runner):
-        runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=IS_BEYOND_MIMIC)
+        runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=IS_TRACKING_TASK)
 
     print(f"Training time: {round(time.time() - start_time, 2)} seconds")
 

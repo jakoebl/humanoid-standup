@@ -124,7 +124,7 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(func=mdp.imu_lin_vel, noise=Unoise(n_min=-0.5, n_max=0.5))
+        projected_gravity = ObsTerm(func=mdp.imu_projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))
         base_ang_vel = ObsTerm(func=mdp.imu_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
         joint_pos = ObsTerm(func=mdp.selected_joint_pos_rel, params={"biased": True}, noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel = ObsTerm(func=mdp.selected_joint_vel_rel, noise=Unoise(n_min=-0.5, n_max=0.5))
@@ -312,3 +312,4 @@ class BeyondMimicPlayEnvCfg(BeyondMimicEnvCfg):
         self.commands.motion.velocity_range = {}
         self.commands.motion.joint_position_range = (0.0, 0.0)
         self.commands.motion.sampling_mode = "start"
+        self.commands.motion.debug_vis = False

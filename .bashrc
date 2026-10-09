@@ -23,11 +23,11 @@ play() {
     local pattern="$1"
     shift
 
-    local root="/workspace/humanoid_standup/logs/rsl_rl/humanoid_standup"
-    local run checkpoint
+    local root="/workspace/humanoid_standup/logs"
+    local run checkpoint task
 
     run=$(
-        find "$root" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' |
+        find "$root" -mindepth 0 -maxdepth 3 -type d -printf '%P\n' |
             grep -E -- "$pattern" |
             LC_ALL=C sort |
             tail -n 1
@@ -37,6 +37,15 @@ play() {
         echo "No run matches: $pattern" >&2
         return 1
     fi
+
+    case "$run" in
+        rsl_rl/humanoid_standup/*) task="Humanoid-Standup" ;;
+        rsl_rl/beyond_mimic/*) task="BeyondMimic-Play" ;;
+        *)
+            echo "Cannot determine task for log directory: $root/$run" >&2
+            return 1
+            ;;
+    esac
 
     checkpoint=$(
         find "$root/$run" -maxdepth 1 -type f -name 'model_*.pt' -printf '%f\n' |
@@ -50,9 +59,9 @@ play() {
         return 1
     fi
 
-    echo "Playing: $root/$run/$checkpoint"
+    echo "Playing ($task): $root/$run/$checkpoint"
     isaaclab -p /workspace/humanoid_standup/scripts/rsl_rl/play.py \
-        --task Humanoid-Standup \
+        --task "$task" \
         --num_envs 1 \
         --checkpoint "$root/$run/$checkpoint" \
         "$@"

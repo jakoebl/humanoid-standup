@@ -25,6 +25,9 @@ def main():
         obs, _ = env.reset()
         assert obs["policy"].shape == (2, 93)
         assert obs["critic"].shape == (2, 286)
+        gravity = raw.scene["imu"].data.projected_gravity_b
+        torch.testing.assert_close(obs["policy"][:, :3], gravity)
+        torch.testing.assert_close(torch.linalg.vector_norm(gravity, dim=-1), torch.ones(2, device=raw.device))
         assert raw.action_manager.total_action_dim == 29
         assert "joint_limit" not in raw.reward_manager.active_terms
         command = raw.command_manager.get_term("motion")
