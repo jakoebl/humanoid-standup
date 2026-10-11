@@ -136,11 +136,11 @@ class ObservationsCfg:
 
     @configclass
     class PrivilegedCfg(ObsGroup):
-        command = ObsTerm(func=mdp.generated_commands, params={"command_name": "motion"})
-        motion_anchor_pos_b = ObsTerm(func=mdp.motion_anchor_pos_b, params={"command_name": "motion"})
-        motion_anchor_ori_b = ObsTerm(func=mdp.motion_anchor_ori_b, params={"command_name": "motion"})
-        body_pos = ObsTerm(func=mdp.robot_body_pos_b, params={"command_name": "motion"})
-        body_ori = ObsTerm(func=mdp.robot_body_ori_b, params={"command_name": "motion"})
+        command = ObsTerm(func=mdp.motion_command)
+        motion_anchor_pos_b = ObsTerm(func=mdp.motion_anchor_pos_b)
+        motion_anchor_ori_b = ObsTerm(func=mdp.motion_anchor_ori_b)
+        body_pos = ObsTerm(func=mdp.robot_body_pos_b)
+        body_ori = ObsTerm(func=mdp.robot_body_ori_b)
         base_lin_vel = ObsTerm(func=mdp.imu_lin_vel)
         base_ang_vel = ObsTerm(func=mdp.imu_ang_vel)
         joint_pos = ObsTerm(func=mdp.selected_joint_pos_rel)
@@ -185,32 +185,32 @@ class RewardsCfg:
     motion_global_root_pos = RewTerm(
         func=mdp.motion_global_anchor_position_error_exp,
         weight=0.5,
-        params={"command_name": "motion", "std": 0.3},
+        params={"std": 0.3},
     )
     motion_global_root_ori = RewTerm(
         func=mdp.motion_global_anchor_orientation_error_exp,
         weight=0.5,
-        params={"command_name": "motion", "std": 0.4},
+        params={"std": 0.4},
     )
     motion_body_pos = RewTerm(
         func=mdp.motion_relative_body_position_error_exp,
         weight=1.0,
-        params={"command_name": "motion", "std": 0.3},
+        params={"std": 0.3},
     )
     motion_body_ori = RewTerm(
         func=mdp.motion_relative_body_orientation_error_exp,
         weight=1.0,
-        params={"command_name": "motion", "std": 0.4},
+        params={"std": 0.4},
     )
     motion_body_lin_vel = RewTerm(
         func=mdp.motion_global_body_linear_velocity_error_exp,
         weight=1.0,
-        params={"command_name": "motion", "std": 1.0},
+        params={"std": 1.0},
     )
     motion_body_ang_vel = RewTerm(
         func=mdp.motion_global_body_angular_velocity_error_exp,
         weight=1.0,
-        params={"command_name": "motion", "std": 3.14},
+        params={"std": 3.14},
     )
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-1e-1)
     self_collisions = RewTerm(
@@ -227,16 +227,15 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     anchor_pos = DoneTerm(
         func=mdp.bad_anchor_pos_z_only,
-        params={"command_name": "motion", "threshold": 0.25},
+        params={"threshold": 0.25},
     )
     anchor_ori = DoneTerm(
         func=mdp.bad_anchor_ori,
-        params={"asset_cfg": SceneEntityCfg("robot"), "command_name": "motion", "threshold": 0.8},
+        params={"asset_cfg": SceneEntityCfg("robot"), "threshold": 0.8},
     )
     ee_body_pos = DoneTerm(
         func=mdp.bad_motion_body_pos_z_only,
         params={
-            "command_name": "motion",
             "threshold": 0.25,
             "body_names": [
                 "left_ankle_roll_link",

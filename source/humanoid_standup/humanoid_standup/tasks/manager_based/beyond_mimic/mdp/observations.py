@@ -12,6 +12,11 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
 
+def motion_command(env: ManagerBasedEnv) -> torch.Tensor:
+    """Reference joint positions and velocities for the motion command."""
+    return env.command_manager.get_term("motion").command
+
+
 def imu_lin_vel(env):
     return env.scene["imu"].data.lin_vel_b
 
@@ -38,26 +43,26 @@ def selected_joint_vel_rel(env):
     return command.robot_joint_vel - command.robot.data.default_joint_vel[:, command.joint_indexes]
 
 
-def robot_anchor_ori_w(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:
-    command: MotionCommand = env.command_manager.get_term(command_name)
+def robot_anchor_ori_w(env: ManagerBasedEnv) -> torch.Tensor:
+    command: MotionCommand = env.command_manager.get_term("motion")
     mat = matrix_from_quat(command.robot_anchor_quat_w)
     return mat[..., :2].reshape(mat.shape[0], -1)
 
 
-def robot_anchor_lin_vel_w(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:
-    command: MotionCommand = env.command_manager.get_term(command_name)
+def robot_anchor_lin_vel_w(env: ManagerBasedEnv) -> torch.Tensor:
+    command: MotionCommand = env.command_manager.get_term("motion")
 
     return command.robot_anchor_lin_vel_w.view(env.num_envs, -1)
 
 
-def robot_anchor_ang_vel_w(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:
-    command: MotionCommand = env.command_manager.get_term(command_name)
+def robot_anchor_ang_vel_w(env: ManagerBasedEnv) -> torch.Tensor:
+    command: MotionCommand = env.command_manager.get_term("motion")
 
     return command.robot_anchor_ang_vel_w.view(env.num_envs, -1)
 
 
-def robot_body_pos_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:
-    command: MotionCommand = env.command_manager.get_term(command_name)
+def robot_body_pos_b(env: ManagerBasedEnv) -> torch.Tensor:
+    command: MotionCommand = env.command_manager.get_term("motion")
 
     num_bodies = len(command.cfg.body_names)
     pos_b, _ = subtract_frame_transforms(
@@ -70,8 +75,8 @@ def robot_body_pos_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:
     return pos_b.view(env.num_envs, -1)
 
 
-def robot_body_ori_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:
-    command: MotionCommand = env.command_manager.get_term(command_name)
+def robot_body_ori_b(env: ManagerBasedEnv) -> torch.Tensor:
+    command: MotionCommand = env.command_manager.get_term("motion")
 
     num_bodies = len(command.cfg.body_names)
     _, ori_b = subtract_frame_transforms(
@@ -84,8 +89,8 @@ def robot_body_ori_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:
     return mat[..., :2].reshape(mat.shape[0], -1)
 
 
-def motion_anchor_pos_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:
-    command: MotionCommand = env.command_manager.get_term(command_name)
+def motion_anchor_pos_b(env: ManagerBasedEnv) -> torch.Tensor:
+    command: MotionCommand = env.command_manager.get_term("motion")
 
     pos, _ = subtract_frame_transforms(
         command.robot_anchor_pos_w,
@@ -97,8 +102,8 @@ def motion_anchor_pos_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor
     return pos.view(env.num_envs, -1)
 
 
-def motion_anchor_ori_b(env: ManagerBasedEnv, command_name: str) -> torch.Tensor:
-    command: MotionCommand = env.command_manager.get_term(command_name)
+def motion_anchor_ori_b(env: ManagerBasedEnv) -> torch.Tensor:
+    command: MotionCommand = env.command_manager.get_term("motion")
 
     _, ori = subtract_frame_transforms(
         command.robot_anchor_pos_w,

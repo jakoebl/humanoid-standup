@@ -41,6 +41,7 @@ play() {
     case "$run" in
         rsl_rl/humanoid_standup/*) task="Humanoid-Standup" ;;
         rsl_rl/beyond_mimic/*) task="BeyondMimic-Play" ;;
+        rsl_rl/mimic_multiclip/*) task="Mimic-Multiclip-Play" ;;
         *)
             echo "Cannot determine task for log directory: $root/$run" >&2
             return 1
@@ -65,4 +66,13 @@ play() {
         --num_envs 1 \
         --checkpoint "$root/$run/$checkpoint" \
         "$@"
+}
+
+# Record each clip from frame 0 into vids/<checkpoint-run-directory>/.
+record() {
+    if [ "$#" -eq 0 ]; then
+        echo 'Usage: record_checkpoint CHECKPOINT_PATH [--clips-dir DIRECTORY]'
+        return 1
+    fi
+    isaaclab -p /workspace/humanoid_standup/scripts/record_checkpoint.py "$@"
 }
