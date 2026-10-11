@@ -23,6 +23,8 @@ parser.add_argument("--record-policy-repetitions", type=int, default=1,
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
 parser.add_argument("--video_folder", type=str, default=None, help="Output directory for recorded videos.")
+parser.add_argument("--standup-success-file", type=str, default=None,
+                    help="Evaluate one full clip from frame 0 in every environment and write standing success rates.")
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
@@ -173,6 +175,50 @@ class KinematicsVisualization(gym.Wrapper):
         return result
 
 
+def evaluate_standup_success(env, runner, policy, output_file):
+    """Count trials that reach standing, without early resets or clip looping."""
+    from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.position_tracking import UPRIGHT_COM_HEIGHT
+
+    raw = env.unwrapped
+    motion = raw.command_manager.get_term("motion")
+    clip_id = motion.cfg.play_clip_index
+    robot = raw.scene["robot"]
+    # Use actual randomized masses, rather than the nominal asset masses.
+    masses = robot.root_physx_view.get_masses().to(raw.device)
+
+    def standing():
+        com = (robot.data.body_com_pos_w * masses[..., None]).sum(dim=1) / masses.sum(dim=1, keepdim=True)
+        return com[:, 2] - raw.scene.env_origins[:, 2] >= UPRIGHT_COM_HEIGHT
+
+    with torch.inference_mode():
+        obs, _ = env.reset()
+        if not torch.all(motion.local_frames == 0) or not torch.all(motion.clip_ids == clip_id):
+            raise RuntimeError("Standing evaluation must start every environment at frame 0 of the selected clip.")
+        policy_nn = policy if version.parse(installed_version) >= version.parse("4.0.0") else getattr(runner.alg, "policy", None)
+        if policy_nn is None:
+            policy_nn = runner.alg.actor_critic
+        policy_nn.reset(torch.ones(raw.num_envs, dtype=torch.bool, device=raw.device))
+        succeeded = standing()
+        # The initial state is frame 0; stop at the last frame before the command loops.
+        steps = int(motion.motion.lengths[clip_id].item()) - 1
+        for _ in range(steps):
+            obs, _, dones, _ = env.step(policy(obs))
+            if torch.any(dones):
+                raise RuntimeError("Unexpected reset during full-clip standing evaluation.")
+            succeeded |= standing()
+        successes = int(succeeded.sum().item())
+    output_file = Path(output_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(
+        f"Clip: {motion.motion.paths[clip_id]}\n"
+        f"Trials: {raw.num_envs}\nStart frame: 0\nFinal frame: {steps}\n"
+        f"Success criterion: whole-body CoM height >= {UPRIGHT_COM_HEIGHT} m at any clip frame\n"
+        "Early terminations: disabled\n"
+        f"Successes: {successes}\nSuccess rate: {successes / raw.num_envs:.6%}\n"
+    )
+    print(f"Standing success: {successes}/{raw.num_envs}; saved to {output_file}", flush=True)
+
+
 def record_policy_rollouts(env, runner, policy, output_dir, action_repeat=1, repetitions=1):
     """Record each clip from frame zero, holding actions between capture steps."""
     import math
@@ -304,6 +350,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         for name in vars(env_cfg.terminations):
             if not name.startswith("_"):
                 setattr(env_cfg.terminations, name, None)
+    if args_cli.standup_success_file:
+        if task_name != "Mimic-Multiclip-Play" or env_cfg.commands.motion.play_clip_index is None:
+            raise ValueError("Standing evaluation requires Mimic-Multiclip-Play with a selected clip.")
+        if args_cli.video or args_cli.record_policy_dir:
+            raise ValueError("Run standing evaluation separately from video recording.")
+        for name in vars(env_cfg.terminations):
+            if not name.startswith("_"):
+                setattr(env_cfg.terminations, name, None)
     env = gym.make(args_cli.task, cfg=env_cfg,
                    render_mode="rgb_array" if args_cli.video or args_cli.record_policy_dir else None)
 
@@ -342,6 +396,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # obtain the trained policy for inference
     policy = runner.get_inference_policy(device=env.unwrapped.device)
+
+    if args_cli.standup_success_file:
+        try:
+            evaluate_standup_success(env, runner, policy, args_cli.standup_success_file)
+        finally:
+            env.close()
+        return
 
     if args_cli.record_policy_dir:
         try:

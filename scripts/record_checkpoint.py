@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record each training reference using a Mimic-Multiclip checkpoint."""
+"""Record each training reference and evaluate 1000 full-clip stand-up trials."""
 import argparse
 import os
 from pathlib import Path
@@ -44,6 +44,15 @@ def main():
             "--task", "Mimic-Multiclip-Play", "--num_envs", "1",
             "--checkpoint", str(checkpoint), "--headless", "--video",
             "--video_length", str(length), "--video_folder", str(folder),
+            f"env.commands.motion.play_clip_index={index}",
+            "env.commands.motion.motion_files=" + "[" + ",".join('"' + str(path) + '"' for path in clips) + "]",
+        ], cwd=project, check=True, env=os.environ.copy())
+        print(f"Evaluating 1000 full-clip trials for {clip.name}", flush=True)
+        subprocess.run([
+            sys.executable, str(project / "scripts/rsl_rl/play.py"),
+            "--task", "Mimic-Multiclip-Play", "--num_envs", "1000",
+            "--checkpoint", str(checkpoint), "--headless",
+            "--standup-success-file", str(folder / "success_rate.txt"),
             f"env.commands.motion.play_clip_index={index}",
             "env.commands.motion.motion_files=" + "[" + ",".join('"' + str(path) + '"' for path in clips) + "]",
         ], cwd=project, check=True, env=os.environ.copy())

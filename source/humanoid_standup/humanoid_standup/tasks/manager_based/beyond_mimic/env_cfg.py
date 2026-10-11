@@ -124,7 +124,7 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        projected_gravity = ObsTerm(func=mdp.imu_projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))
+        linear_acc = ObsTerm(func=mdp.imu_lin_acc, noise=Unoise(n_min=-0.2, n_max=0.2))
         base_ang_vel = ObsTerm(func=mdp.imu_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
         joint_pos = ObsTerm(func=mdp.selected_joint_pos_rel, params={"biased": True}, noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel = ObsTerm(func=mdp.selected_joint_vel_rel, noise=Unoise(n_min=-0.5, n_max=0.5))
@@ -141,6 +141,7 @@ class ObservationsCfg:
         motion_anchor_ori_b = ObsTerm(func=mdp.motion_anchor_ori_b)
         body_pos = ObsTerm(func=mdp.robot_body_pos_b)
         body_ori = ObsTerm(func=mdp.robot_body_ori_b)
+        linear_acc = ObsTerm(func=mdp.imu_lin_acc)
         base_lin_vel = ObsTerm(func=mdp.imu_lin_vel)
         base_ang_vel = ObsTerm(func=mdp.imu_ang_vel)
         joint_pos = ObsTerm(func=mdp.selected_joint_pos_rel)
@@ -297,6 +298,8 @@ class BeyondMimicEnvCfg(ManagerBasedRLEnvCfg):
         self.viewer.eye = (1.5, 1.5, 1.5)
         self.viewer.origin_type = "asset_root"
         self.viewer.asset_name = "robot"
+        self.scene.lazy_sensor_update = False
+        self.scene.imu.update_period = 0.0
 
 
 @configclass
