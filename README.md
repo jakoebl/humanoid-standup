@@ -212,7 +212,7 @@ Validation:
 
 ```bash
 /isaac-sim/python.sh tests/test_beyond_mimic_motion.py
-/isaac-sim/python.sh scripts/check_beyond_mimic.py --headless
+/isaac-sim/python.sh tests/check_beyond_mimic.py --headless
 ```
 
 ### Humanoid-Standup task
@@ -494,10 +494,45 @@ under `logs/rsl_rl/mimic_multiclip`. Keep the clip library unchanged when resumi
   env.commands.motion.play_clip_index=0
 ```
 
+`scripts/record_checkpoint.py <checkpoint>` overlays a translucent cyan reference
+robot in each recorded clip. It records videos only by default; add
+`--evaluate-success` to also run the 1,000-trial standing evaluation. Worst-case
+tracking evaluation runs only when explicitly requested with `--worst-case-dir`.
+For direct playback or `--video`, add
+`--reference-ghost` to show the same visual-only overlay in world coordinates.
+
 Playback selects the zero-based index in the resolved file list, starts at frame
 0, and hides debug arrows. Use `--video --video_length 259 --headless` for video;
 adjust the length to the selected clip. Set `play_clip_index=null` to randomly
 select clips at resets. The existing `record_models.py` does not support this task.
+
+Evaluate worst-case tracking for a checkpoint with 1,000 parallel full-clip trials:
+
+```bash
+/isaac-sim/python.sh scripts/rsl_rl/play.py \
+  --task Mimic-Multiclip-Play --headless --num_envs 1000 \
+  --checkpoint logs/rsl_rl/mimic_multiclip/<run>/model_<iteration>.pt \
+  --worst-case-dir outputs/worst_case/model_<iteration>/clip_0 \
+  env.commands.motion.play_clip_index=0
+```
+
+`--worst-case-dir` defaults to 1,000 environments when `--num_envs` is omitted.
+All trials start at frame 0 and run through the final frame. The configured
+anchor-height, anchor-orientation, and end-effector-height termination checks
+still run at their normal timing, but never reset the robot; timeouts are disabled.
+`summary.json` reports the failure rate, thresholds, and first breach frame for
+each term and failing trial, ordered by earliest breach. Each failed trial gets
+its own full-length `env_NNNN.mp4` at 720p and the control frame rate. Videos replay
+captured physical states, so they preserve the evaluated trajectory rather than
+running the policy again. Temporary state storage is removed after recording.
+Use a fresh output directory for each evaluation. Repeat with another clip index
+to evaluate other clips; `play_clip_index=null` is not supported in this mode.
+This also supports `BeyondMimic-Play` for its single clip.
+
+Evaluation uses the playback settings (no observation noise, reset pose/velocity
+noise, or pushes), while retaining startup physical randomization. Use `--seed`
+to control trial sampling. These are full-clip tracking-failure rates, not standing
+success rates or a search over adversarial disturbances.
 
 The actor receives no clip identity or reference trajectory. Use compatible
 stand-up variations; different intended behaviors from indistinguishable states
@@ -507,5 +542,5 @@ available during training.
 Run the unequal-length multi-clip integration check with:
 
 ```bash
-/isaac-sim/python.sh scripts/check_mimic_multiclip.py --headless
+/isaac-sim/python.sh tests/check_mimic_multiclip.py --headless
 ```
