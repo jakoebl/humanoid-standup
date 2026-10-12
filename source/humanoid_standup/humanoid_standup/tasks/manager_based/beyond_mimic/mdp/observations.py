@@ -29,9 +29,6 @@ def imu_projected_gravity(env):
 def imu_ang_vel(env):
     return env.scene["imu"].data.ang_vel_b
 
-def imu_lin_acc(env):
-    return env.scene["imu"].data.lin_acc_b
-
 def selected_joint_pos_rel(env, biased=False):
     command = env.command_manager.get_term("motion")
     value = command.robot_joint_pos - command.robot.data.default_joint_pos[:, command.joint_indexes]
