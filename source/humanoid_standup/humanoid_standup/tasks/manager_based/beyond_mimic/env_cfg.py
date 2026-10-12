@@ -101,7 +101,7 @@ class CommandsCfg:
             "yaw": (-0.2, 0.2),
         },
         velocity_range=VELOCITY_RANGE,
-        joint_position_range=(-0.1, 0.1),
+        joint_position_range=(-0.5, 0.5),
         motion_file=str(Path(__file__).resolve().parents[6] / "data/beyondmimic/stand_up_lying_V2.npz"),
         anchor_body_name="torso_link",
         body_names=BODY_NAMES,
