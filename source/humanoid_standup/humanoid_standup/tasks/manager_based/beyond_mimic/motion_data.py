@@ -1,5 +1,7 @@
 """Validate and remap named Isaac Sim motion targets; independent of Isaac Sim."""
 
+from pathlib import Path
+
 import numpy as np
 
 
@@ -37,3 +39,21 @@ def load_motion(path, joint_names, body_names, fps):
             raise ValueError("Motion body quaternions must have unit norm.")
         result["fps"] = actual_fps
         return result
+
+
+def resolve_motion_files(directory, files, motion_file=None):
+    """Resolve an explicit list, a directory, or the default single file, in that order."""
+    if files:
+        paths = [Path(path).expanduser().resolve() for path in files]
+    elif directory:
+        paths = sorted(Path(directory).expanduser().resolve().glob("*.npz"))
+    else:
+        paths = [Path(motion_file).expanduser().resolve()] if motion_file else []
+    if not paths:
+        raise ValueError(f"No prepared NPZ clips found in {directory}; use precompute_beyond_mimic.py first.")
+    if len(set(paths)) != len(paths):
+        raise ValueError("Motion files must be unique.")
+    for path in paths:
+        if not path.is_file():
+            raise FileNotFoundError(path)
+    return paths

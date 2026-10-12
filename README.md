@@ -144,7 +144,7 @@ Some examples of packages that can likely be excluded are:
 ```
 ## DeepMimic-style stand-up training
 
-### BeyondMimic task
+### BeyondMimic single- and multi-clip task
 
 `BeyondMimic` is a separate Isaac Lab task matching the customized mjlab G1
 tracking setup. Its actor uses 93 values (IMU projected gravity/angular velocity, 29 relative
@@ -187,8 +187,18 @@ cd /workspace/humanoid_standup
 ```
 
 Use `env.commands.motion.motion_file=/absolute/path/to/clip.npz` to select another
-prepared clip. This task currently tracks one clip per run, matching mjlab's
-motion command. Its checkpoints live under `logs/rsl_rl/beyond_mimic`; existing
+prepared clip. The same task also supports multi-clip training: set
+`env.commands.motion.motion_directory=/absolute/path/to/clips` to load sorted
+`*.npz` files, or pass
+`'env.commands.motion.motion_files=[/data/first.npz,/data/second.npz]'`.
+Selection precedence is explicit file list, directory, then `motion_file`.
+The default remains the prepared V2 single clip. Clips are selected uniformly,
+with independent adaptive frame sampling per clip and no crossing clip boundaries.
+Use `BeyondMimic-Play` with `env.commands.motion.play_clip_index=0` to play a
+selected clip; set it to `null` for random clip selection. Supply the same library
+configuration during training and playback. The resolved file list is saved in
+`params/training_clips.yaml`; keep it unchanged when resuming.
+Its checkpoints live under `logs/rsl_rl/beyond_mimic`; existing
 mjlab or `Humanoid-Standup` checkpoints cannot be resumed directly.
 
 ```bash
@@ -461,6 +471,11 @@ python scripts/record.py --checkpoint logs/rsl_rl/humanoid_standup/<run>/model_1
 ```
 
 ### Mimic-Multiclip task
+
+`Mimic-Multiclip` and `Mimic-Multiclip-Play` remain compatibility presets for
+`BeyondMimic` and `BeyondMimic-Play`, with directory loading enabled by default
+and the original `mimic_multiclip` log directory. Both use the same motion command.
+For new runs, use `BeyondMimic` with the library overrides above.
 
 `Mimic-Multiclip` shares BeyondMimic's gravity-based 93-value actor, 286-value
 critic, robot, actions, rewards, and PPO settings. It loads all prepared `*.npz`

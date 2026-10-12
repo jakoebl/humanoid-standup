@@ -7,6 +7,7 @@ from pathlib import Path
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--task", default="BeyondMimic", choices=("BeyondMimic", "Mimic-Multiclip"))
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 app = AppLauncher(args).app
@@ -27,11 +28,11 @@ def main():
                 for key in ("joint_pos", "joint_vel", "body_pos_w", "body_quat_w", "body_lin_vel_w", "body_ang_vel_w"):
                     arrays[key] = arrays[key][index * 50:index * 50 + length]
                 np.savez(Path(directory) / f"clip_{index}.npz", **arrays)
-        cfg = parse_env_cfg("Mimic-Multiclip", device=args.device, num_envs=4)
+        cfg = parse_env_cfg(args.task, device=args.device, num_envs=4)
         cfg.commands.motion.motion_directory = directory
         cfg.commands.motion.debug_vis = False
         cfg.observations.policy.enable_corruption = False
-        env = gym.make("Mimic-Multiclip", cfg=cfg)
+        env = gym.make(args.task, cfg=cfg)
         try:
             raw = env.unwrapped
             obs, _ = env.reset()

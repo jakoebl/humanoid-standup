@@ -1,12 +1,12 @@
 """Independent per-environment clip selection with per-clip adaptive sampling."""
 
 import math
-from pathlib import Path
 
 import torch
 from isaaclab.utils import configclass
 
-from ..beyond_mimic.mdp.commands import MotionCommand, MotionCommandCfg, MotionLoader
+from .commands import MotionCommand, MotionCommandCfg, MotionLoader
+from ..motion_data import resolve_motion_files
 
 
 class MotionLibrary(MotionLoader):
@@ -24,20 +24,6 @@ class MotionLibrary(MotionLoader):
             setattr(self, field, torch.cat([getattr(clip, field) for clip in clips]))
 
 
-def resolve_motion_files(directory, files):
-    """Explicit files take precedence; otherwise use a stable, nonrecursive directory scan."""
-    if files:
-        paths = [Path(path).expanduser().resolve() for path in files]
-    else:
-        paths = sorted(Path(directory).expanduser().resolve().glob("*.npz"))
-    if not paths:
-        raise ValueError(f"No prepared NPZ clips found in {directory}; use precompute_beyond_mimic.py first.")
-    if len(set(paths)) != len(paths):
-        raise ValueError("Motion files must be unique.")
-    for path in paths:
-        if not path.is_file():
-            raise FileNotFoundError(path)
-    return paths
 
 
 class MulticlipMotionCommand(MotionCommand):
@@ -45,7 +31,7 @@ class MulticlipMotionCommand(MotionCommand):
 
     def _load_motion(self, env):
         return MotionLibrary(
-            resolve_motion_files(self.cfg.motion_directory, self.cfg.motion_files),
+            resolve_motion_files(self.cfg.motion_directory, self.cfg.motion_files, self.cfg.motion_file),
             self.body_indexes, self.robot.joint_names, self.robot.body_names, 1 / env.step_dt, self.device,
         )
 

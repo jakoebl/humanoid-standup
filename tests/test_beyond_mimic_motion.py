@@ -60,5 +60,26 @@ class NamedMotionTest(unittest.TestCase):
             self.load()
 
 
+class MotionSelectionTest(unittest.TestCase):
+    def test_single_directory_and_explicit_list_precedence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first, second = root / "a.npz", root / "b.npz"
+            first.touch()
+            second.touch()
+            (root / "ignored.csv").touch()
+            self.assertEqual(module.resolve_motion_files("", [], str(second)), [second])
+            self.assertEqual(module.resolve_motion_files(directory, [], str(second)), [first, second])
+            self.assertEqual(module.resolve_motion_files(directory, [str(second), str(first)], str(first)),
+                             [second, first])
+            with self.assertRaisesRegex(ValueError, "unique"):
+                module.resolve_motion_files("", [str(first), str(first)])
+            with self.assertRaises(FileNotFoundError):
+                module.resolve_motion_files("", [], str(root / "missing.npz"))
+            with tempfile.TemporaryDirectory() as empty:
+                with self.assertRaisesRegex(ValueError, "No prepared NPZ"):
+                    module.resolve_motion_files(empty, [], str(first))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -88,7 +88,7 @@ class MySceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command specifications for the MDP."""
 
-    motion = mdp.MotionCommandCfg(
+    motion = mdp.MulticlipMotionCommandCfg(
         asset_name="robot",
         resampling_time_range=(1.0e9, 1.0e9),
         debug_vis=True,
@@ -312,5 +312,6 @@ class BeyondMimicPlayEnvCfg(BeyondMimicEnvCfg):
         self.commands.motion.pose_range = {}
         self.commands.motion.velocity_range = {}
         self.commands.motion.joint_position_range = (0.0, 0.0)
+        self.commands.motion.play_clip_index = 0
         self.commands.motion.sampling_mode = "start"
         self.commands.motion.debug_vis = False
