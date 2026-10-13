@@ -101,8 +101,8 @@ class CommandsCfg:
             "yaw": (-0.2, 0.2),
         },
         velocity_range=VELOCITY_RANGE,
-        joint_position_range=(-0.5, 0.5),
-        motion_file=str(Path(__file__).resolve().parents[6] / "data/beyondmimic/stand_up_lying_V2.npz"),
+        joint_position_range=(-0.3, 0.3),
+        motion_file=str(Path(__file__).resolve().parents[6] / "data/beyondmimic/back.npz"),
         anchor_body_name="torso_link",
         body_names=BODY_NAMES,
     )
@@ -227,16 +227,16 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     anchor_pos = DoneTerm(
         func=mdp.bad_anchor_pos_z_only,
-        params={"threshold": 0.25},
+        params={"threshold": 0.75},
     )
     anchor_ori = DoneTerm(
         func=mdp.bad_anchor_ori,
-        params={"asset_cfg": SceneEntityCfg("robot"), "threshold": 0.8},
+        params={"asset_cfg": SceneEntityCfg("robot"), "threshold": 1.6},
     )
     ee_body_pos = DoneTerm(
         func=mdp.bad_motion_body_pos_z_only,
         params={
-            "threshold": 0.25,
+            "threshold": 1.0,
             "body_names": [
                 "left_ankle_roll_link",
                 "right_ankle_roll_link",
