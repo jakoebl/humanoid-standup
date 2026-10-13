@@ -8,7 +8,7 @@ train() {
     shift
 
     isaaclab -p /workspace/humanoid_standup/scripts/rsl_rl/train.py \
-        --task Humanoid-Standup \
+        --task BeyondMimic \
         --headless \
         --run_name "$run_name" \
         "$@"

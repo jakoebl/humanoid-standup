@@ -209,7 +209,8 @@ mjlab or `Humanoid-Standup` checkpoints cannot be resumed directly.
 
 Playback starts at frame 0 and uses a native Isaac Sim window. Add `--video
 --video_length 259 --headless` to record a full reference-length rollout. The
-existing `record_models.py` batch recorder remains specific to `Humanoid-Standup`.
+`record_models.py` batch recorder also supports BeyondMimic with
+`--task BeyondMimic`.
 
 PhysX uses the repository's G1 USD asset, including finger links. Motor control,
 reference math, and network inputs match the custom task; dynamics and collision
@@ -409,7 +410,7 @@ Record one full pass of a processed CSV to a 1280×720 MP4:
 ```
 
 The video is saved in `/workspace/humanoid_standup/vids/standup_1_32.mp4`. Recording runs headless
-by default; add `--gui` to show Isaac Sim. Use `--output path/to/video.mp4` for a
+only. Use `--output path/to/video.mp4` for a
 custom destination. Existing recordings are never overwritten.
 
 The default `--fps 120` preserves every reference sample. `--fps 30` or
@@ -461,8 +462,12 @@ Keep the training clips available on the recording machine.
 Simulator output is saved to `<run>/recordings/<iteration>.log`.
 Failures are reported and the batch continues with the next checkpoint;
 the script exits with a nonzero status if any recording failed.
-Use `--device`, `--task`, `--agent`, or `--gui` to override playback defaults.
+Use `--device`, `--task`, or `--agent` to override playback defaults.
 In the Isaac Sim container, you can use `/isaac-sim/python.sh` instead of `python`.
+
+Recording infers the task from the checkpoint’s `humanoid_standup` or
+`beyond_mimic` experiment directory. Use `--task` to override it for relocated
+checkpoints.
 
 To record a single checkpoint:
 
@@ -470,14 +475,11 @@ To record a single checkpoint:
 python scripts/record.py --checkpoint logs/rsl_rl/humanoid_standup/<run>/model_1000.pt
 ```
 
-### Mimic-Multiclip task
+### BeyondMimic multi-clip training
 
-`Mimic-Multiclip` and `Mimic-Multiclip-Play` remain compatibility presets for
-`BeyondMimic` and `BeyondMimic-Play`, with directory loading enabled by default
-and the original `mimic_multiclip` log directory. Both use the same motion command.
-For new runs, use `BeyondMimic` with the library overrides above.
+BeyondMimic supports multiple prepared motion clips through the same motion command.
 
-`Mimic-Multiclip` shares BeyondMimic's gravity-based 93-value actor, 286-value
+`BeyondMimic` shares BeyondMimic's gravity-based 93-value actor, 286-value
 critic, robot, actions, rewards, and PPO settings. It loads all prepared `*.npz`
 files directly in `data/beyondmimic` (sorted by filename). Each environment selects
 clips uniformly at reset and clip completion. Starting frames use independent
@@ -493,25 +495,29 @@ only the prepared V2 clip; add other prepared references for multi-clip training
 ```bash
 cd /workspace/humanoid_standup
 /isaac-sim/python.sh scripts/rsl_rl/train.py \
-  --task Mimic-Multiclip --headless --num_envs 2048 --run_name multiclip
+  --task BeyondMimic --headless --num_envs 2048 --run_name multiclip
 ```
 
 Override `env.commands.motion.motion_directory=/absolute/path/to/clips`, or use
 an explicit list (which takes precedence over the directory):
 `'env.commands.motion.motion_files=[/data/first.npz,/data/second.npz]'`.
 The resolved file list is saved in `params/training_clips.yaml`. Runs are stored
-under `logs/rsl_rl/mimic_multiclip`. Keep the clip library unchanged when resuming.
+under `logs/rsl_rl/beyond_mimic`. Keep the clip library unchanged when resuming.
 
 ```bash
 /isaac-sim/python.sh scripts/rsl_rl/play.py \
-  --task Mimic-Multiclip-Play --num_envs 1 \
-  --checkpoint logs/rsl_rl/mimic_multiclip/<run>/model_<iteration>.pt \
+  --task BeyondMimic-Play --num_envs 1 \
+  --checkpoint logs/rsl_rl/beyond_mimic/<run>/model_<iteration>.pt \
   env.commands.motion.play_clip_index=0
 ```
 
-`scripts/record_checkpoint.py <checkpoint>` overlays a translucent cyan reference
-robot in each recorded clip. It records videos only by default; add
-`--evaluate-success` to also run the 1,000-trial standing evaluation. Worst-case
+`scripts/record.py --checkpoint <checkpoint>` overlays a translucent cyan reference
+robot in each recorded clip. Recording is headless and reads
+`params/training_clips.yaml`, resolving paths from other checkouts locally.
+Without a saved list, it uses `data/beyondmimic` (`data/training` for
+Humanoid-Standup). Use `--clips-dir` only to override the inferred directory.
+Outputs are saved under `vids/<run>/<iteration>/<index>_<clip>/`.
+Use `--repetitions` for multiple recordings per clip. Worst-case
 tracking evaluation runs only when explicitly requested with `--worst-case-dir`.
 For direct playback or `--video`, add
 `--reference-ghost` to show the same visual-only overlay in world coordinates.
@@ -519,14 +525,33 @@ For direct playback or `--video`, add
 Playback selects the zero-based index in the resolved file list, starts at frame
 0, and hides debug arrows. Use `--video --video_length 259 --headless` for video;
 adjust the length to the selected clip. Set `play_clip_index=null` to randomly
-select clips at resets. The existing `record_models.py` does not support this task.
+select clips at resets.
+
+Evaluate standing-up success with 1,000 parallel full-clip trials:
+
+```bash
+/isaac-sim/python.sh scripts/evaluate.py \
+  --checkpoint logs/rsl_rl/beyond_mimic/<run>/model_<iteration>.pt \
+  --criterion standing_up
+```
+
+Success requires mass-weighted COM height strictly above 0.5 m relative to the
+environment origin throughout at least the final 1 second of the clip. The check
+includes both endpoints at the control sampling rate; clips shorter than 1 second
+cannot succeed. Results include success counts and rate in `summary.json` and each
+trial's result and final sustained standing duration in `standing_up.csv`.
+Each summary also records reset joint noise, policy observation noise and whether
+it is enabled, event parameters including encoder-bias defaults, sampled physical
+randomization statistics, simulation timing, and the complete resolved environment
+and agent configurations used for evaluation.
+Omit `--criterion` to run all evaluations, or use `--clip-index` to select one clip.
 
 Evaluate worst-case tracking for a checkpoint with 1,000 parallel full-clip trials:
 
 ```bash
 /isaac-sim/python.sh scripts/rsl_rl/play.py \
-  --task Mimic-Multiclip-Play --headless --num_envs 1000 \
-  --checkpoint logs/rsl_rl/mimic_multiclip/<run>/model_<iteration>.pt \
+  --task BeyondMimic-Play --headless --num_envs 1000 \
+  --checkpoint logs/rsl_rl/beyond_mimic/<run>/model_<iteration>.pt \
   --worst-case-dir outputs/worst_case/model_<iteration>/clip_0 \
   env.commands.motion.play_clip_index=0
 ```
