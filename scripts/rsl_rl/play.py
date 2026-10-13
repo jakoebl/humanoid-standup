@@ -17,6 +17,12 @@ import cli_args  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
+parser.add_argument("--reference-ghost", action="store_true",
+                    help="Overlay a translucent reference robot in tracking playback and video.")
+parser.add_argument("--worst-case-dir", type=str,
+                    help="Evaluate 1000 full-clip trials by default and save videos of every threshold breach.")
+parser.add_argument("--reference-clips-dir", type=str,
+                    help="Humanoid-Standup reference CSV directory for playback.")
 parser.add_argument("--record-policy-dir", type=str, help="Record each clip from frame 0 at 1080p and 60 fps.")
 parser.add_argument("--record-policy-repetitions", type=int, default=1,
                     help="Record this many rollouts per clip, each starting at frame 0.")
@@ -25,6 +31,8 @@ parser.add_argument("--video_length", type=int, default=200, help="Length of the
 parser.add_argument("--video_folder", type=str, default=None, help="Output directory for recorded videos.")
 parser.add_argument("--standup-success-file", type=str, default=None,
                     help="Evaluate one full clip from frame 0 in every environment and write standing success rates.")
+parser.add_argument("--initial-joint-noise-sweep", type=float, nargs="+",
+                    help="Uniform +/- joint position noise in radians; evaluate all clips and save CSV beside success file.")
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
@@ -46,8 +54,14 @@ cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
+if args_cli.initial_joint_noise_sweep is not None:
+    import math
+    if not args_cli.standup_success_file:
+        parser.error("--initial-joint-noise-sweep requires --standup-success-file")
+    if any(not math.isfinite(value) or value < 0 for value in args_cli.initial_joint_noise_sweep):
+        parser.error("Initial joint noise amplitudes must be finite and nonnegative.")
 # always enable cameras to record video
-if args_cli.video or args_cli.record_policy_dir:
+if args_cli.video or args_cli.record_policy_dir or args_cli.worst_case_dir:
     args_cli.enable_cameras = True
 
 # clear out sys.argv for Hydra
@@ -107,7 +121,9 @@ from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.position_tracking
 # Load all training clips before Hydra constructs the environment config.
 IS_TRACKING_TASK = args_cli.task is not None and args_cli.task.split(":")[-1].startswith(("BeyondMimic", "Mimic-Multiclip"))
 if not IS_TRACKING_TASK:
-    REFERENCE.__init__(Path(__file__).resolve().parents[2] / "data/training", REFERENCE.dt, REFERENCE.device)
+    reference_directory = (Path(args_cli.reference_clips_dir) if args_cli.reference_clips_dir else
+                           Path(__file__).resolve().parents[2] / "data/training")
+    REFERENCE.__init__(reference_directory, REFERENCE.dt, REFERENCE.device)
 elif args_cli.record_policy_dir:
     raise ValueError("BeyondMimic playback supports --video; --record-policy-dir is for Humanoid-Standup clips.")
 
@@ -217,6 +233,41 @@ def evaluate_standup_success(env, runner, policy, output_file):
         f"Successes: {successes}\nSuccess rate: {successes / raw.num_envs:.6%}\n"
     )
     print(f"Standing success: {successes}/{raw.num_envs}; saved to {output_file}", flush=True)
+    return successes
+
+
+def evaluate_initial_joint_noise(env, runner, policy, output_file):
+    """Sweep physical initial joint perturbations with paired random seeds."""
+    import csv
+    import json
+
+    raw = env.unwrapped
+    motion = raw.command_manager.get_term("motion")
+    destination = Path(output_file).parent
+    destination.mkdir(parents=True, exist_ok=True)
+    seed = raw.cfg.seed
+    rows = []
+    for amplitude in args_cli.initial_joint_noise_sweep:
+        if amplitude < 0:
+            raise ValueError("Noise amplitudes must be nonnegative.")
+        motion.cfg.joint_position_range = (-amplitude, amplitude)
+        for clip_id, clip in enumerate(motion.motion.paths):
+            motion.cfg.play_clip_index = clip_id
+            raw.seed(seed)
+            successes = evaluate_standup_success(
+                env, runner, policy, destination / f"noise_{amplitude:g}_clip_{clip_id}.txt")
+            rows.append(dict(noise_rad=amplitude, clip=Path(clip).name, trials=raw.num_envs,
+                             successes=successes, success_rate=successes / raw.num_envs))
+            with (destination / "success_rates.csv").open("w", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+                writer.writeheader()
+                writer.writerows(rows)
+    (destination / "metadata.json").write_text(json.dumps(dict(
+        checkpoint=args_cli.checkpoint, seed=seed, noise="independent uniform joint offsets in radians, clamped to soft joint limits",
+        amplitudes=args_cli.initial_joint_noise_sweep, trials_per_clip=raw.num_envs,
+        success="whole-body CoM >= 0.5 m at any frame; early terminations disabled",
+        root_pose_noise=False, velocity_noise=False, observation_noise=False,
+    ), indent=2))
 
 
 def record_policy_rollouts(env, runner, policy, output_dir, action_repeat=1, repetitions=1):
@@ -287,6 +338,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg: RslRlBaseRunnerCfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
 
+    if args_cli.worst_case_dir and args_cli.num_envs is None:
+        env_cfg.scene.num_envs = 1000
+
     # handle deprecated configurations
     agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, installed_version)
 
@@ -351,15 +405,31 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             if not name.startswith("_"):
                 setattr(env_cfg.terminations, name, None)
     if args_cli.standup_success_file:
-        if task_name != "Mimic-Multiclip-Play" or env_cfg.commands.motion.play_clip_index is None:
-            raise ValueError("Standing evaluation requires Mimic-Multiclip-Play with a selected clip.")
+        if task_name != "BeyondMimic-Play" or env_cfg.commands.motion.play_clip_index is None:
+            raise ValueError("Standing evaluation requires BeyondMimic-Play with a selected clip.")
         if args_cli.video or args_cli.record_policy_dir:
             raise ValueError("Run standing evaluation separately from video recording.")
         for name in vars(env_cfg.terminations):
             if not name.startswith("_"):
                 setattr(env_cfg.terminations, name, None)
+    if args_cli.worst_case_dir:
+        if not IS_TRACKING_TASK:
+            raise ValueError("Worst-case evaluation requires a BeyondMimic or Mimic-Multiclip task.")
+        if args_cli.video or args_cli.record_policy_dir or args_cli.standup_success_file:
+            raise ValueError("Run worst-case evaluation separately from other recording/evaluation modes.")
+        from worst_case import BreachMonitor
+
+        breach_monitor = BreachMonitor()
+        breach_monitor.configure(env_cfg)
+        env_cfg.commands.motion.debug_vis = False
+        env_cfg.viewer.origin_type = "world"
+        env_cfg.viewer.resolution = (1280, 720)
+    # The visual-only reference is animated with USD transform attributes.
+    if args_cli.disable_fabric or args_cli.reference_ghost:
+        env_cfg.sim.use_fabric = False
+
     env = gym.make(args_cli.task, cfg=env_cfg,
-                   render_mode="rgb_array" if args_cli.video or args_cli.record_policy_dir else None)
+                   render_mode="rgb_array" if args_cli.video or args_cli.record_policy_dir or args_cli.worst_case_dir else None)
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
@@ -368,6 +438,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Update markers before RecordVideo captures each frame.
     if not IS_TRACKING_TASK:
         env = KinematicsVisualization(env)
+
+    if args_cli.reference_ghost:
+        if not IS_TRACKING_TASK or args_cli.worst_case_dir:
+            raise ValueError("Reference ghost requires tracking playback or --video recording.")
+        from reference_ghost import ReferenceGhost
+
+        env = ReferenceGhost(env)
 
     # wrap for video recording
     if args_cli.video:
@@ -397,9 +474,24 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # obtain the trained policy for inference
     policy = runner.get_inference_policy(device=env.unwrapped.device)
 
+    if args_cli.worst_case_dir:
+        from worst_case import evaluate
+
+        policy_nn = policy if version.parse(installed_version) >= version.parse("4.0.0") else getattr(runner.alg, "policy", None)
+        if policy_nn is None:
+            policy_nn = runner.alg.actor_critic
+        try:
+            evaluate(env, policy, policy_nn, breach_monitor, args_cli.worst_case_dir, resume_path)
+        finally:
+            env.close()
+        return
+
     if args_cli.standup_success_file:
         try:
-            evaluate_standup_success(env, runner, policy, args_cli.standup_success_file)
+            if args_cli.initial_joint_noise_sweep:
+                evaluate_initial_joint_noise(env, runner, policy, args_cli.standup_success_file)
+            else:
+                evaluate_standup_success(env, runner, policy, args_cli.standup_success_file)
         finally:
             env.close()
         return
