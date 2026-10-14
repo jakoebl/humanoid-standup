@@ -1,6 +1,7 @@
 # Keep model checkpoints out of Git.
 vids
 outputs
+evaluation
 logs
 tmp
 ################################

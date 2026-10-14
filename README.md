@@ -546,6 +546,21 @@ randomization statistics, simulation timing, and the complete resolved environme
 and agent configurations used for evaluation.
 Omit `--criterion` to run all evaluations, or use `--clip-index` to select one clip.
 
+Evaluate jitteriness with `scripts/evaluate.py --checkpoint <checkpoint> --criterion jitteriness`
+(default: 1,000 trials per clip). Lower scores indicate smoother motion. The score is
+RMS joint jerk in rad/s³: the third finite difference of joint angles divided by the
+control timestep cubed, averaged in squared form over all tracked joints and valid
+full-clip samples, then square-rooted. Policy and unperturbed reference use identical
+joints, frames and control sampling. At least four frames are required. This measures
+rapid changes in acceleration, including deliberate fast movements; it is sensitive
+to the sampling rate and does not use smoothing.
+
+`summary.json` includes population mean/stddev across the 1,000 separate full-clip
+policy scores and the single reference clip RMS score. `jitteriness.csv` stores every
+trial score. `jitteriness_bins.csv` and `jitteriness_histogram.svg` show the distribution
+across runs, with the reference clip RMS marked on the plot. Included when running
+all evaluations without `--criterion`.
+
 Evaluate worst-case tracking for a checkpoint with 1,000 parallel full-clip trials:
 
 ```bash

@@ -196,7 +196,8 @@ class MotionCommand(CommandTerm):
         # Initialize CollisionChecker
         if not hasattr(self, "_collision_checker"):
             self._collision_checker = CollisionChecker(
-                self.robot, self._env.scene.env_origins, self.cfg.reset_penetration_tolerance
+                self.robot, self._env.scene.env_origins, self.cfg.reset_penetration_tolerance,
+                min_foot_distance=self.cfg.reset_min_foot_distance,
             )
 
         # pending includes all envs that failed collision check and need to be resampled
@@ -392,7 +393,9 @@ class MotionCommandCfg(CommandTermCfg):
 
     # Accept contact, but reject penetration deeper than numerical tolerance.
     reset_penetration_tolerance: float = 1e-4
-    reset_joint_noise_attempts: int = 16
+    # Minimum 3D distance between ankle-roll links during reset (meters).
+    reset_min_foot_distance: float = 0.1
+    reset_joint_noise_attempts: int = 64
     reset_root_pose_attempts: int = 8
 
     sampling_mode: str = "adaptive"
