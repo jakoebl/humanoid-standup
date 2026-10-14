@@ -6,7 +6,6 @@ from types import MethodType, SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
-import numpy as np
 import torch
 from humanoid_standup.tasks.manager_based.beyond_mimic.mdp.commands import MotionCommand
 
@@ -58,27 +57,44 @@ class ResetCollisionTest(unittest.TestCase):
         empty._sample_and_apply_reset_pose.assert_not_called()
         empty._sample_reset_root_pose.assert_not_called()
 
-    def test_floor_check_handles_contact_rotated_meshes_and_environment_heights(self):
-        # Sphere, box vertices, and translated floors use the same world-height test.
+    def test_point_floor_checks_cover_all_eight_points_and_environment_heights(self):
+        # Each environment has a different point below its floor; the last one is valid.
         checker = object.__new__(module.CollisionChecker)
-        positions = torch.tensor([[[0., 0., .1]], [[0., 0., .09]], [[0., 0., 2.1]]])
+        floor = torch.arange(9, dtype=torch.float32)
+        positions = torch.zeros(9, 8, 3)
+        positions[:, :, 2] = floor[:, None]
+        for index in range(8):
+            positions[index, index, 2] -= .01
+        checker.robot = SimpleNamespace(device="cpu", data=SimpleNamespace(body_link_pos_w=positions))
+        checker.floor_heights = floor
+        checker.tolerance = 1e-4
+        checker.min_foot_distance = 0.
+        checker.point_ids = list(range(8))
+        self.assertEqual(checker.invalid_envs(list(range(9))), list(range(8)))
+        self.assertEqual(checker.invalid_envs([8, 3, 1]), [3, 1])
+        positions[0, 0, 2] = -.00005
+        self.assertEqual(checker.invalid_envs([0, 8]), [])
+        self.assertEqual(checker.invalid_envs([]), [])
+
+    def test_foot_distance_rejects_close_feet_and_allows_threshold_and_vertical_separation(self):
+        # Check horizontal and vertical separation, plus an independent floor failure.
+        checker = object.__new__(module.CollisionChecker)
+        positions = torch.tensor([[[0., 0., 1.], [.09, 0., 1.]],
+                                  [[0., 0., 1.], [.1, 0., 1.]],
+                                  [[0., 0., 1.], [.2, 0., 1.]],
+                                  [[0., 0., 1.], [0., 0., 1.11]],
+                                  [[0., 0., -.1], [.2, 0., -.1]]])
         checker.robot = SimpleNamespace(device="cpu", data=SimpleNamespace(
             body_link_pos_w=positions,
-            body_link_quat_w=torch.tensor([[[1., 0., 0., 0.]]] * 3)))
-        checker.floor_heights = torch.tensor([0., 0., 2.])
+            body_link_quat_w=torch.tensor([[[1., 0., 0., 0.]] * 2] * 5)))
+        checker.floor_heights = torch.zeros(5)
         checker.tolerance = 1e-4
-        checker.shapes = [dict(body=0, points=torch.zeros(1, 3), radius=.1)]
-        self.assertEqual(checker.invalid_envs([0, 1, 2]), [1])
-        self.assertEqual(checker.invalid_envs([2, 1]), [1])
-        positions[1, 0, 2] = .1 - .00005
-        self.assertEqual(checker.invalid_envs([1]), [])  # Within numerical tolerance.
-
-        # Rotating an elongated collision shape can move its lowest vertex below the floor.
-        checker.shapes = [dict(body=0, points=torch.tensor([[-.2, 0., 0.], [.2, 0., 0.]]), radius=0.)]
-        self.assertEqual(checker.invalid_envs([0]), [])
-        checker.robot.data.body_link_quat_w[0, 0] = torch.tensor([np.sqrt(.5), 0., np.sqrt(.5), 0.])
-        self.assertEqual(checker.invalid_envs([0]), [0])
-
+        checker.min_foot_distance = .1
+        checker.point_ids = [0, 1]
+        self.assertEqual(checker.invalid_envs([0, 1, 2, 3, 4]), [0, 4])
+        self.assertEqual(checker.invalid_envs([3, 0, 2]), [0])
+        checker.min_foot_distance = 0.
+        self.assertEqual(checker.invalid_envs([0, 1, 2, 3, 4]), [4])
 
 
 if __name__ == '__main__':

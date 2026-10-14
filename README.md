@@ -599,3 +599,40 @@ Run the unequal-length multi-clip integration check with:
 ```bash
 /isaac-sim/python.sh tests/check_mimic_multiclip.py --headless
 ```
+
+Evaluation CSV files, including histogram bins, are stored in each clip result
+directory’s `raw/` subdirectory. Plots and `summary.json` remain directly in the clip result directory.
+Individual worst-reward videos are stored in `vids/`; `worst_rewards.mp4` in the
+clip result directory plays all selected attempts sequentially, from lowest reward
+upward. The combined video uses the same rendered frames as the individual videos.
+
+Jitteriness evaluation also records the 10 trials with highest full-clip RMS joint
+jerk (or all trials if fewer than 10). Foot-motion evaluation records trials strictly
+exceeding the configured displacement threshold after standing, capped at 10 and
+ordered by largest maximum displacement on either foot. Ties use environment ID.
+Individual videos go in `vids/jitteriness_*.mp4` and `vids/foot_motion_*.mp4`;
+`jitteriness.mp4` and `foot_motion.mp4` play the selected runs sequentially. No
+foot-motion video is produced if no trial exceeds the threshold. Summary metadata
+lists selected runs, scores and video paths. All video criteria share a disk-backed
+trajectory cache and replay the measured rollout without running the policy again.
+Older evaluations require a new rollout to produce these videos because their
+full-trial trajectory caches were temporary.
+
+Evaluate actuator effort with `scripts/evaluate.py --checkpoint <checkpoint> --criterion actuator_effort`
+(default: 1,000 full-clip runs). It also runs when `--criterion` is omitted.
+Each run produces peak absolute torque (N m), RMS torque over time and actuated
+joints (N m), time with any joint at or above 99% of its effort limit (s), and
+absolute mechanical work `dt * sum(abs(torque * joint_velocity))` (J). Multiple
+simultaneously saturated joints count once toward saturation time. Work sums all
+actuated joints and both signs of power; it is not electrical energy consumption.
+
+Signals are sampled after each control step, excluding the reset frame. The source
+is `robot.data.applied_torque`; for implicit actuators this is the clipped actuator-model
+estimate, not an independently measured solver torque. Control-rate sampling can
+miss physics-substep peaks and approximates work and time at the torque limit.
+Only joints assigned to actuators are included; effort limits must be finite and
+strictly positive. The selected joint names and measurement definitions are recorded
+in `summary.json`, together with mean, population stddev, median and 95th percentile
+across run scores. `raw/actuator_effort.csv` stores the per-run values. Each metric
+has its own histogram SVG in the clip result directory and bin counts in `raw/`.
+This criterion does not record videos or allocate a trajectory cache when run alone.
