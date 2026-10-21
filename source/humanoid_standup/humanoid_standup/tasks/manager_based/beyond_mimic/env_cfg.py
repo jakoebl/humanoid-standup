@@ -23,7 +23,7 @@ from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from . import mdp
-from .constants import ACTION_SCALE, BODY_NAMES, CONTACT_BODY_NAMES, JOINT_NAMES
+from .constants import ACTION_SCALE, BODY_NAMES, CONTACT_BODY_NAMES, JOINT_NAMES, JOINT_POSITION_LIMITS
 from .robot import robot_cfg
 from pathlib import Path
 
@@ -213,6 +213,12 @@ class RewardsCfg:
         params={"std": 3.14},
     )
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-1e-1)
+    
+    joint_torques_l2 = RewTerm(
+        func=mdp.joint_torques_l2,
+        weight=-1e-5,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=JOINT_NAMES, preserve_order=True)},
+    )
     self_collisions = RewTerm(
         func=mdp.self_collision_cost, weight=-10.0,
         params={"sensor_names": ["self_contact_" + name for name in CONTACT_BODY_NAMES],
