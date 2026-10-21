@@ -39,3 +39,36 @@ ACTION_SCALE = {
     for expressions, armature, effort, _ in MOTOR_GROUPS.values()
     for expression in expressions
 }
+
+# Absolute PD target bounds, matching the original g1_rl_controller deployment limits.
+JOINT_POSITION_LIMITS = {
+    "left_hip_pitch_joint": (-2.5307, 2.8798),
+    "left_hip_roll_joint": (-0.5236, 2.9671),
+    "left_hip_yaw_joint": (-2.7576, 2.7576),
+    "left_knee_joint": (-0.087267, 2.8798),
+    "left_ankle_pitch_joint": (-0.87267, 0.5236),
+    "left_ankle_roll_joint": (-0.2618, 0.2618),
+    "right_hip_pitch_joint": (-2.5307, 2.8798),
+    "right_hip_roll_joint": (-2.9671, 0.5236),
+    "right_hip_yaw_joint": (-2.7576, 2.7576),
+    "right_knee_joint": (-0.087267, 2.8798),
+    "right_ankle_pitch_joint": (-0.87267, 0.5236),
+    "right_ankle_roll_joint": (-0.2618, 0.2618),
+    "waist_yaw_joint": (-2.618, 2.618),
+    "waist_roll_joint": (-0.52, 0.52),
+    "waist_pitch_joint": (-0.52, 0.52),
+    "left_shoulder_pitch_joint": (-3.0892, 2.6704),
+    "left_shoulder_roll_joint": (-1.5882, 2.2515),
+    "left_shoulder_yaw_joint": (-2.618, 2.618),
+    "left_elbow_joint": (-1.0472, 2.0944),
+    "left_wrist_roll_joint": (-1.972222054, 1.972222054),
+    "left_wrist_pitch_joint": (-1.61443, 1.61443),
+    "left_wrist_yaw_joint": (-1.61443, 1.61443),
+    "right_shoulder_pitch_joint": (-3.0892, 2.6704),
+    "right_shoulder_roll_joint": (-2.2515, 1.5882),
+    "right_shoulder_yaw_joint": (-2.618, 2.618),
+    "right_elbow_joint": (-1.0472, 2.0944),
+    "right_wrist_roll_joint": (-1.972222054, 1.972222054),
+    "right_wrist_pitch_joint": (-1.61443, 1.61443),
+    "right_wrist_yaw_joint": (-1.61443, 1.61443),
+}

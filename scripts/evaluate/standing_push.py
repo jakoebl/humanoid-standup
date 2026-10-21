@@ -8,7 +8,7 @@ import numpy as np
 
 from .standing_up import StandingUp
 from .foot_motion import StandingFootMotion
-
+PUSH_VELOCITY = 1.0
 
 def push_frame(length, step_dt):
     """Choose the first sample within the final second, allowing response steps."""
@@ -43,7 +43,7 @@ class StandingPush(StandingUp):
         rng = np.random.default_rng(np.random.SeedSequence([raw.cfg.seed, motion.cfg.play_clip_index]))
         # Independent uniform headings: fixed magnitude, rather than uniform x/y components.
         angles = rng.uniform(0.0, 2.0 * math.pi, raw.num_envs)
-        self.velocity_offsets = 2.0 * np.column_stack((np.cos(angles), np.sin(angles)))
+        self.velocity_offsets = PUSH_VELOCITY * np.column_stack((np.cos(angles), np.sin(angles)))
         selected = rng.choice(raw.num_envs, size=min(10, raw.num_envs), replace=False)
         self.attempts = [
             {"rank": rank, "env_id": int(env_id),
@@ -88,7 +88,7 @@ class StandingPush(StandingUp):
             "push_frame": self.push_frame,
             "push_time_s": self.push_frame * self.step_dt,
             "standing_window": "push at start of final reference second; observe for three seconds; no measured-height gate",
-            "horizontal_velocity_change_m_s": 0.5,
+            "horizontal_velocity_change_m_s": PUSH_VELOCITY,
             "direction": "independent uniform world-frame horizontal heading per trial",
             "vertical_velocity_change_m_s": 0.0,
             "angular_velocity_change_rad_s": 0.0,

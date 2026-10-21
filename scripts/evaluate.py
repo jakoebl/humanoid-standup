@@ -303,8 +303,8 @@ def main():
                            "trials": raw.num_envs, "frames": length, "fps": 1 / raw.step_dt,
                            "early_termination": False,
                            "criterion": args.criterion or "all",
-                           "environment": environment_summary(raw, task, agent_cfg),
-                           "evaluations": {evaluation.name: evaluation.summary() for evaluation in evaluations}}                           
+                           "evaluations": {evaluation.name: evaluation.summary() for evaluation in evaluations},
+                           "environment": environment_summary(raw, task, agent_cfg)}                           
                 (destination / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
                 # save data for each evaluation
