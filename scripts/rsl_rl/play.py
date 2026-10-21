@@ -380,7 +380,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env_cfg.commands.motion.sampling_mode = "start"
         env_cfg.commands.motion.pose_range = {}
         env_cfg.commands.motion.velocity_range = {}
-        env_cfg.commands.motion.joint_position_range = (0.0, 0.0)
+        # Preserve the task-configured joint position noise on reset.
     else:
         env_cfg.terminations.ee_deviation = None
         env_cfg.terminations.com_deviation = None
@@ -530,6 +530,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         # export to JIT and ONNX
         export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
         export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
+
+    if IS_TRACKING_TASK:
+        from onnx_metadata import attach_tracking_metadata
+
+        attach_tracking_metadata(env.unwrapped, os.path.join(export_model_dir, "policy.onnx"))
+        print("[INFO] Attached g1_rl_controller deployment metadata to policy.onnx.")
 
     dt = env.unwrapped.step_dt
 
