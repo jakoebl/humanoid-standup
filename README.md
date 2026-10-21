@@ -157,6 +157,12 @@ contain motion acceleration). This replaces the previous actor velocity input;
 train a fresh policy even though its input dimension is unchanged. Other actor
 noise and encoder bias follow mjlab's settings. Actions use
 the same per-motor scales, gains, torque limits, and nominal bent-knee pose.
+Absolute PD position targets are clipped, after scaling and adding the default
+joint offsets, to the original MuJoCo deployment controller's joint limits.
+This applies to both single-clip and multi-clip BeyondMimic tasks and playback.
+It changes the action dynamics: train a fresh policy for this configuration.
+For policies trained with this clipping, deploy with `clip_action_targets:=true`;
+older checkpoints trained without clipping still require their original setup.
 Training defaults to 2048 environments, 200 Hz physics, and 50 Hz control.
 PPO uses 24 steps per rollout, ELU networks of size 512/256/128, observation
 normalization, and 30000 iterations. The eight reward terms exclude joint-limit

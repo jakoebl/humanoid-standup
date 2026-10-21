@@ -2,7 +2,8 @@
 """Run full-clip trials with the selected evaluation.
 
 --checkpoint: model to evaluate; task and clips are inferred from its path.
---criterion: standing_up, foot_motion, lifted_foot, jitteriness, actuator_effort or worst_rewards; omit to run all evaluations.
+--criterion: standing_up, foot_motion, lifted_foot, jitteriness, actuator_effort, worst_rewards or standing_push.
+Omit to run all unpushed evaluations; standing_push is a separate disturbed rollout.
 --task: optional task override for relocated checkpoints.
 --num-envs: parallel trials per clip (default: 1000).
 --clip-index: evaluate one clip; default is every training clip.
@@ -118,7 +119,7 @@ def environment_summary(raw, task, agent_cfg):
     }
 
 
-def run_clip(env, policy, clip_index, evaluations):
+def run_clip(env, policy, clip_index, evaluations, num_frames=None):
     """Run one shared full-clip rollout and send frames to each evaluation."""
     import torch
 
@@ -128,6 +129,12 @@ def run_clip(env, policy, clip_index, evaluations):
     length = int(motion.motion.lengths[clip_index].item())
     if length < 2:
         raise ValueError("Evaluation requires at least two clip frames.")
+    if num_frames is not None:
+        if num_frames < length:
+            raise ValueError("Evaluation cannot truncate the reference clip.")
+        if num_frames > length and not motion.cfg.hold_final_frame:
+            raise ValueError("Extended rollouts require holding the final reference frame.")
+        length = num_frames
     for evaluation in evaluations:
         evaluation.prepare(raw)
     with torch.inference_mode():
@@ -150,7 +157,7 @@ def run_clip(env, policy, clip_index, evaluations):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument("--criterion", choices=("standing_up", "foot_motion", "lifted_foot", "jitteriness", "actuator_effort", "worst_rewards"))
+    parser.add_argument("--criterion", choices=("standing_up", "foot_motion", "lifted_foot", "jitteriness", "actuator_effort", "worst_rewards", "standing_push"))
     parser.add_argument("--task")
     parser.add_argument("--num-envs", type=int, default=1000)
     parser.add_argument("--clip-index", type=int)
@@ -213,17 +220,20 @@ def main():
         from evaluate.foot_motion import StandingFootMotion
         from evaluate.rewards import RewardEvaluation, TrajectoryCache, render_attempts
         from evaluate.standing_up import StandingUp
+        from evaluate.standing_push import StandingPush
 
         from humanoid_standup.tasks.manager_based.beyond_mimic.env_cfg import CommandsCfg
 
         # copy the task environment and restore training noise for evaluation
         env_cfg = parse_env_cfg(task, device=args.device, num_envs=args.num_envs)
         env_cfg.seed = args.seed
+        env_cfg.actions.joint_pos.clip = None
         configure_evaluation_randomization(env_cfg, CommandsCfg().motion)
         # load reference clips
         env_cfg.commands.motion.motion_files = [str(clip) for clip in clips]
         # start from frame 0
         env_cfg.commands.motion.sampling_mode = "start"
+        env_cfg.commands.motion.hold_final_frame = args.criterion == "standing_push"
         env_cfg.commands.motion.debug_vis = False
 
         # Retain configured randomization, but never terminate or reset early.
@@ -273,6 +283,10 @@ def main():
                     evaluations.append(ActuatorEffort(raw.num_envs, raw.step_dt))
                 if args.criterion in (None, "standing_up"):
                     evaluations.append(StandingUp(raw.num_envs, raw.step_dt))
+                if args.criterion == "standing_push":
+                    push_evaluation = StandingPush(raw.num_envs, raw.step_dt, args.foot_movement_threshold)
+                    evaluations.append(push_evaluation)
+                    length = push_evaluation.rollout_frames(length)
 
 
                 print(f"Evaluating clip {index}: {raw.num_envs} trials, {length - 1} steps...", flush=True)
@@ -282,7 +296,7 @@ def main():
                 if record_video and cache is None:
                     cache = stack.enter_context(TrajectoryCache(raw, length, destination))
                     observers.append(cache)
-                run_clip(env, policy, index, observers)
+                run_clip(env, policy, index, observers, num_frames=length)
 
                 # general information on the evaluation process
                 summary = {"checkpoint": str(checkpoint), "clip": str(clips[index]),
@@ -297,8 +311,9 @@ def main():
                 for evaluation in evaluations:
                     evaluation.save(destination)
                 for evaluation in evaluations:
-                    criterion = {"jitteriness": "jitteriness", "standing_foot_motion": "foot_motion"}.get(evaluation.name)
-                    if criterion is not None:
+                    criterion = {"jitteriness": "jitteriness", "standing_foot_motion": "foot_motion",
+                                 "standing_push": "standing_push"}.get(evaluation.name)
+                    if record_video and criterion is not None:
                         render_attempts(raw, cache.states, evaluation.video_attempts(), destination, criterion=criterion)
         print(f"Evaluation results: {output}", flush=True)
     

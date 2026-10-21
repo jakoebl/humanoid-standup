@@ -14,6 +14,9 @@ import numpy as np
 
 
 class Tensor(np.ndarray):
+    def clone(self):
+        return self.copy()
+
     def to(self, device):
         return self
 
@@ -61,6 +64,9 @@ class PolicyEvaluationTest(unittest.TestCase):
             self.foot_motion = StandingFootMotion
             from evaluate.lifted_foot import LiftedFoot
             self.lifted_foot = LiftedFoot
+            from evaluate.standing_push import StandingPush, push_frame
+            self.standing_push = StandingPush
+            self.push_frame = push_frame
             from evaluate.standing_up import StandingUp
             self.standing_up = StandingUp
             main_spec = importlib.util.spec_from_file_location("evaluate_main_test", path.parents[1] / "evaluate.py")
@@ -103,6 +109,88 @@ class PolicyEvaluationTest(unittest.TestCase):
         self.robot.data.root_state_w[:] = self.frame
         self.robot.data.body_link_pos_w[0, 0, 0] = .03 * self.frame
         return None, tensor([2., -1., 3.]), tensor([False] * 3), {}
+
+    def test_standing_push_criterion_pushes_once_and_measures_recovery(self):
+        self.motion.motion.lengths = np.array([101])
+        calls = []
+        criterion = self.standing_push(3, .02)
+        self.motion.cfg.hold_final_frame = True
+        length = criterion.rollout_frames(101)
+        with tempfile.TemporaryDirectory() as folder:
+            with self.module.TrajectoryCache(self.env.unwrapped, length, folder) as cache:
+                with patch.object(criterion, "apply_push", lambda raw: calls.append(self.frame)):
+                    self.main.run_clip(self.env, self.policy, 0, [criterion, cache], num_frames=length)
+                self.assertEqual(len(cache.states), 201)
+                self.assertEqual(cache.states[-1, 0, 0], 200)
+        self.assertEqual(self.frame, 200)
+        self.assertEqual(self.reset_count, 1)
+        self.assertEqual(calls, [50])
+        summary = criterion.summary()
+        self.assertEqual(summary["pushes_per_trial"], 1)
+        self.assertEqual(summary["standing_success"]["succeeded"], 2)
+        self.assertEqual(summary["foot_movement"]["moved_feet_after_standing"], 1)
+        self.assertEqual(summary["combined_video"], "standing_push.mp4")
+        ids = [attempt["env_id"] for attempt in criterion.video_attempts()]
+        self.assertEqual(sorted(ids), [0, 1, 2])
+        # Motion before the push does not contribute to push-response displacement.
+        self.assertAlmostEqual(criterion.foot_motion.max_displacement[0, 0], 4.5)
+        self.assertEqual(summary["standing_success"]["required_duration_s"], 3.0)
+        np.testing.assert_array_equal(criterion.succeeded, [True, False, True])
+        with tempfile.TemporaryDirectory() as folder:
+            criterion.save(folder)
+            with (Path(folder) / "raw/standing_push.csv").open() as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual([row["push_frame"] for row in rows], ["50"] * 3)
+        # Losing standing within the response window must fail even if recovered.
+        criterion = self.standing_push(1, .02)
+        criterion.required_intervals = 150
+        for frame in range(201):
+            criterion.update(frame, np.array([.4 if frame == 175 else .6]))
+        self.assertFalse(criterion.succeeded[0])
+
+    def test_push_video_selection_is_seeded_unique_and_limited_to_ten(self):
+        raw = self.env.unwrapped
+        raw.num_envs = 100
+        self.motion.motion.lengths = np.array([101])
+        first = self.standing_push(100, .02)
+        second = self.standing_push(100, .02)
+        first.prepare(raw)
+        second.prepare(raw)
+        np.testing.assert_array_equal(first.velocity_offsets, second.velocity_offsets)
+        np.testing.assert_allclose(np.linalg.norm(first.velocity_offsets, axis=1), .5)
+        self.assertEqual(first.video_attempts(), second.video_attempts())
+        ids = [attempt["env_id"] for attempt in first.video_attempts()]
+        self.assertEqual(len(ids), 10)
+        self.assertEqual(len(set(ids)), 10)
+        self.assertTrue(all(0 <= index < 100 for index in ids))
+
+    def test_horizontal_push_adds_fixed_speed_and_preserves_other_velocities(self):
+        criterion = self.standing_push(3, .02)
+        self.motion.motion.lengths = np.array([101])
+        raw = self.env.unwrapped
+        criterion.prepare(raw)
+        before = tensor([[1., 2., 3., 4., 5., 6.], [-2., .3, -.4, .5, -.6, .7], [0., 0., 0., 0., 0., 0.]])
+        self.robot.data.root_vel_w = before.copy()
+        written = []
+        self.robot.write_root_velocity_to_sim = lambda value: written.append(value.copy())
+        criterion.apply_push(raw)
+        delta = written[0] - before
+        np.testing.assert_allclose(np.linalg.norm(delta[:, :2], axis=1), .5)
+        np.testing.assert_array_equal(delta[:, 2:], 0.)
+        np.testing.assert_array_equal(self.robot.data.root_vel_w, before)
+        self.assertEqual(criterion.summary()["horizontal_velocity_change_m_s"], .5)
+
+    def test_extended_rollout_requires_final_reference_hold(self):
+        self.motion.cfg.hold_final_frame = False
+        with self.assertRaisesRegex(ValueError, "holding the final reference frame"):
+            self.main.run_clip(self.env, self.policy, 0, [], num_frames=103)
+
+    def test_standing_push_timing_rejects_short_clips(self):
+        self.assertEqual(self.push_frame(51, .02), 0)
+        self.assertEqual(self.push_frame(101, .03), 67)
+        for length, dt in ((3, .02), (101, 0), (101, float("nan"))):
+            with self.subTest(length=length, dt=dt), self.assertRaises(ValueError):
+                self.push_frame(length, dt)
 
     def test_full_clip_reports_all_rewards_and_renders_original_states(self):
         rendered = []
