@@ -95,7 +95,11 @@ class MulticlipMotionCommand(MotionCommand):
     def _update_command(self):
         self.time_steps += 1
         ends = self.motion.offsets[self.clip_ids] + self.motion.lengths[self.clip_ids]
-        self._resample_command(torch.where(self.time_steps >= ends)[0])
+        if self.cfg.hold_final_frame:
+            # Evaluation can keep simulating after the reference ends without resetting the robot.
+            self.time_steps = torch.minimum(self.time_steps, ends - 1)
+        else:
+            self._resample_command(torch.where(self.time_steps >= ends)[0])
         self.update_relative_body_poses()
         for counts, pending in zip(self.failed_bins, self.pending_failures):
             counts.lerp_(pending, self.cfg.adaptive_alpha)
@@ -108,3 +112,4 @@ class MulticlipMotionCommandCfg(MotionCommandCfg):
     motion_directory: str = ""
     motion_files: list[str] = []
     play_clip_index: int | None = None
+    hold_final_frame: bool = False
