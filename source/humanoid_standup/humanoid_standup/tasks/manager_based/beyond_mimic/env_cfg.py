@@ -216,7 +216,7 @@ class RewardsCfg:
     
     joint_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2,
-        weight=-1e-5,
+        weight=-1e-4,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=JOINT_NAMES, preserve_order=True)},
     )
     self_collisions = RewTerm(
