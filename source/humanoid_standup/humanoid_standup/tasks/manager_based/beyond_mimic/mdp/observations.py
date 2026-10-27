@@ -17,6 +17,12 @@ def motion_command(env: ManagerBasedEnv) -> torch.Tensor:
     return env.command_manager.get_term("motion").command
 
 
+def motion_clip_one_hot(env: ManagerBasedEnv) -> torch.Tensor:
+    """One-hot encoding of the clip currently selected for each environment."""
+    command = env.command_manager.get_term("motion")
+    return torch.nn.functional.one_hot(command.clip_ids, num_classes=len(command.motion.paths)).float()
+
+
 def imu_lin_vel(env):
     return env.scene["imu"].data.lin_vel_b
 

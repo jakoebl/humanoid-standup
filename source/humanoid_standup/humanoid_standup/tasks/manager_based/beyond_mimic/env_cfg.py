@@ -146,6 +146,7 @@ class ObservationsCfg:
         joint_pos = ObsTerm(func=mdp.selected_joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.selected_joint_vel_rel)
         actions = ObsTerm(func=mdp.last_action)
+        motion_clip = ObsTerm(func=mdp.motion_clip_one_hot)
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
@@ -216,7 +217,7 @@ class RewardsCfg:
     
     joint_torques_l2 = RewTerm(
         func=mdp.joint_torques_l2,
-        weight=-1e-4,
+        weight=-1e-5,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=JOINT_NAMES, preserve_order=True)},
     )
     self_collisions = RewTerm(
