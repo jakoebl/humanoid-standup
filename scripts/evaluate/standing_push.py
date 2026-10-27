@@ -8,7 +8,7 @@ import numpy as np
 
 from .standing_up import StandingUp
 from .foot_motion import StandingFootMotion
-PUSH_VELOCITY = 1.0
+PUSH_VELOCITY = 2.0
 
 def push_frame(length, step_dt):
     """Choose the first sample within the final second, allowing response steps."""

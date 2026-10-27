@@ -7,6 +7,7 @@ Omit to run all unpushed evaluations; standing_push is a separate disturbed roll
 --task: optional task override for relocated checkpoints.
 --num-envs: parallel trials per clip (default: 1000).
 --clip-index: evaluate one clip; default is every training clip.
+--record: enable video rendering and recording; disabled by default.
 --output: fresh result directory; defaults to evaluation/<run>_<model>_<YYYY-MM-DD_HH-MM-SS>.
 --seed: evaluation seed (default: 42).
 --foot-movement-threshold: post-standing foot displacement tolerance in meters (default: 0.02).
@@ -161,6 +162,7 @@ def main():
     parser.add_argument("--task")
     parser.add_argument("--num-envs", type=int, default=1000)
     parser.add_argument("--clip-index", type=int)
+    parser.add_argument("--record", action="store_true", help="Enable video rendering and recording.")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--foot-movement-threshold", type=float, default=0.1)
@@ -199,7 +201,7 @@ def main():
     from isaaclab.app import AppLauncher
 
     print("[evaluate] Starting simulator...", flush=True)
-    record_video = args.criterion in (None, "worst_rewards", "jitteriness", "foot_motion")
+    record_video = args.record and args.criterion in (None, "worst_rewards", "jitteriness", "foot_motion")
     app = AppLauncher(headless=True, device=args.device, enable_cameras=record_video).app
     print("[evaluate] Simulator started; loading evaluation modules...", flush=True)
     env = None
@@ -272,7 +274,7 @@ def main():
                 evaluations = []
 
                 if args.criterion in (None, "worst_rewards"):
-                    evaluations.append(stack.enter_context(RewardEvaluation(raw, length, destination)))
+                    evaluations.append(stack.enter_context(RewardEvaluation(raw, length, destination, record_video)))
                 if args.criterion in (None, "foot_motion"):
                     evaluations.append(StandingFootMotion(raw.num_envs, args.foot_movement_threshold))                
                 if args.criterion in (None, "lifted_foot"):

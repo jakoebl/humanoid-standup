@@ -159,8 +159,9 @@ class TrajectoryCache:
 class RewardEvaluation(TrajectoryCache):
     name = "rewards"
 
-    def __init__(self, raw, length, output):
+    def __init__(self, raw, length, output, record_video=False):
         super().__init__(raw, length, output)
+        self.record_video = record_video
         self.totals = np.zeros(raw.num_envs, dtype=np.float64)
 
     def observe(self, raw, frame, rewards):
@@ -183,6 +184,7 @@ class RewardEvaluation(TrajectoryCache):
             writer.writerows(enumerate(self.totals.tolist()))
         save_reward_histogram(self.totals, output)
         attempts = worst_attempts(self.totals)
-        print(f"Worst total reward: {attempts[0]['total_reward']:.6f}; rendering {len(attempts)} videos...",
-              flush=True)
-        render_attempts(self.raw, self.states, attempts, Path(output))
+        if self.record_video:
+            print(f"Worst total reward: {attempts[0]['total_reward']:.6f}; rendering {len(attempts)} videos...",
+                  flush=True)
+            render_attempts(self.raw, self.states, attempts, Path(output))
