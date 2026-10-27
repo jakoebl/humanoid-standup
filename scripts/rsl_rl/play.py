@@ -17,8 +17,6 @@ import cli_args  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
-parser.add_argument("--reference-ghost", action="store_true",
-                    help="Overlay a translucent reference robot in tracking playback and video.")
 parser.add_argument("--worst-case-dir", type=str,
                     help="Evaluate 1000 full-clip trials by default and save videos of every threshold breach.")
 parser.add_argument("--reference-clips-dir", type=str,
@@ -424,8 +422,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env_cfg.commands.motion.debug_vis = False
         env_cfg.viewer.origin_type = "world"
         env_cfg.viewer.resolution = (1280, 720)
-    # The visual-only reference is animated with USD transform attributes.
-    if args_cli.disable_fabric or args_cli.reference_ghost:
+    if args_cli.disable_fabric:
         env_cfg.sim.use_fabric = False
 
     env = gym.make(args_cli.task, cfg=env_cfg,
@@ -438,13 +435,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Update markers before RecordVideo captures each frame.
     if not IS_TRACKING_TASK:
         env = KinematicsVisualization(env)
-
-    if args_cli.reference_ghost:
-        if not IS_TRACKING_TASK or args_cli.worst_case_dir:
-            raise ValueError("Reference ghost requires tracking playback or --video recording.")
-        from reference_ghost import ReferenceGhost
-
-        env = ReferenceGhost(env)
 
     # wrap for video recording
     if args_cli.video:
