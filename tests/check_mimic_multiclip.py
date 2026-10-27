@@ -37,10 +37,15 @@ def main():
             raw = env.unwrapped
             obs, _ = env.reset()
             command = raw.command_manager.get_term("motion")
-            assert obs["policy"].shape == (4, 93) and obs["critic"].shape == (4, 286)
+            assert obs["policy"].shape == (4, 93) and obs["critic"].shape == (4, 288)
             assert command.motion.lengths.tolist() == [80, 130]
             command.clip_ids[:] = torch.tensor([0, 1, 0, 1], device=raw.device)
             command.time_steps[:] = command.motion.offsets[command.clip_ids] + 10
+            critic = raw.observation_manager.compute()["critic"]
+            torch.testing.assert_close(
+                critic[:, -2:],
+                torch.tensor([[1, 0], [0, 1], [1, 0], [0, 1]], device=raw.device, dtype=critic.dtype),
+            )
             before = raw.observation_manager.compute()["policy"].clone()
             command.time_steps[:] += 20
             torch.testing.assert_close(before, raw.observation_manager.compute()["policy"])
