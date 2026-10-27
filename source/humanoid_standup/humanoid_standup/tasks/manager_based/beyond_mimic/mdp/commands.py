@@ -1,4 +1,3 @@
-# Adapted from HybridRobotics/whole_body_tracking; see ../PROVENANCE.md.
 from __future__ import annotations
 
 import math
