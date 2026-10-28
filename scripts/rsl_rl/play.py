@@ -17,8 +17,6 @@ import cli_args  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
-parser.add_argument("--worst-case-dir", type=str,
-                    help="Evaluate 1000 full-clip trials by default and save videos of every threshold breach.")
 parser.add_argument("--reference-clips-dir", type=str,
                     help="Humanoid-Standup reference CSV directory for playback.")
 parser.add_argument("--record-policy-dir", type=str, help="Record each clip from frame 0 at 1080p and 60 fps.")
@@ -59,7 +57,7 @@ if args_cli.initial_joint_noise_sweep is not None:
     if any(not math.isfinite(value) or value < 0 for value in args_cli.initial_joint_noise_sweep):
         parser.error("Initial joint noise amplitudes must be finite and nonnegative.")
 # always enable cameras to record video
-if args_cli.video or args_cli.record_policy_dir or args_cli.worst_case_dir:
+if args_cli.video or args_cli.record_policy_dir:
     args_cli.enable_cameras = True
 
 # clear out sys.argv for Hydra
@@ -336,9 +334,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg: RslRlBaseRunnerCfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
 
-    if args_cli.worst_case_dir and args_cli.num_envs is None:
-        env_cfg.scene.num_envs = 1000
-
     # handle deprecated configurations
     agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, installed_version)
 
@@ -410,23 +405,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         for name in vars(env_cfg.terminations):
             if not name.startswith("_"):
                 setattr(env_cfg.terminations, name, None)
-    if args_cli.worst_case_dir:
-        if not IS_TRACKING_TASK:
-            raise ValueError("Worst-case evaluation requires a BeyondMimic or Mimic-Multiclip task.")
-        if args_cli.video or args_cli.record_policy_dir or args_cli.standup_success_file:
-            raise ValueError("Run worst-case evaluation separately from other recording/evaluation modes.")
-        from worst_case import BreachMonitor
-
-        breach_monitor = BreachMonitor()
-        breach_monitor.configure(env_cfg)
-        env_cfg.commands.motion.debug_vis = False
-        env_cfg.viewer.origin_type = "world"
-        env_cfg.viewer.resolution = (1280, 720)
     if args_cli.disable_fabric:
         env_cfg.sim.use_fabric = False
 
     env = gym.make(args_cli.task, cfg=env_cfg,
-                   render_mode="rgb_array" if args_cli.video or args_cli.record_policy_dir or args_cli.worst_case_dir else None)
+                   render_mode="rgb_array" if args_cli.video or args_cli.record_policy_dir else None)
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
@@ -463,18 +446,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # obtain the trained policy for inference
     policy = runner.get_inference_policy(device=env.unwrapped.device)
-
-    if args_cli.worst_case_dir:
-        from worst_case import evaluate
-
-        policy_nn = policy if version.parse(installed_version) >= version.parse("4.0.0") else getattr(runner.alg, "policy", None)
-        if policy_nn is None:
-            policy_nn = runner.alg.actor_critic
-        try:
-            evaluate(env, policy, policy_nn, breach_monitor, args_cli.worst_case_dir, resume_path)
-        finally:
-            env.close()
-        return
 
     if args_cli.standup_success_file:
         try:
