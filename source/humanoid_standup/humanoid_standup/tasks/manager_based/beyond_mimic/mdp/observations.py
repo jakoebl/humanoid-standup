@@ -20,6 +20,9 @@ def motion_command(env: ManagerBasedEnv) -> torch.Tensor:
 def motion_clip_one_hot(env: ManagerBasedEnv) -> torch.Tensor:
     """One-hot encoding of the clip currently selected for each environment."""
     command = env.command_manager.get_term("motion")
+    if len(command.motion.paths) == 1:
+        return command.clip_ids.new_empty((env.num_envs, 0), dtype=torch.float32)
+
     return torch.nn.functional.one_hot(command.clip_ids, num_classes=len(command.motion.paths)).float()
 
 

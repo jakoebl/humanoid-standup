@@ -24,7 +24,7 @@ def main():
         raw = env.unwrapped
         obs, _ = env.reset()
         assert obs["policy"].shape == (2, 93)
-        assert obs["critic"].shape == (2, 286)
+        assert obs["critic"].shape == (2, 285)
         gravity = raw.scene["imu"].data.projected_gravity_b
         torch.testing.assert_close(obs["policy"][:, :3], gravity)
         torch.testing.assert_close(torch.linalg.vector_norm(gravity, dim=-1), torch.ones(2, device=raw.device))
