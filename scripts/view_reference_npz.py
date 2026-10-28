@@ -20,12 +20,30 @@ def main() -> None:
     parser.add_argument("clip", type=Path, nargs="?", default=ROOT / "data/beyondmimic/back.npz")
     parser.add_argument("--once", action="store_true", help="Stop after one pass instead of looping.")
     parser.add_argument("--start-frame", type=int, default=0)
+    parser.add_argument("--render-every", type=int, default=2,
+                        help="Render every N pose updates; 1 renders every update.")
     AppLauncher.add_app_launcher_args(parser)
     args = parser.parse_args()
     if args.start_frame < 0:
         parser.error("--start-frame must be nonnegative.")
+    if args.render_every < 1:
+        parser.error("--render-every must be at least 1.")
 
     app = AppLauncher(args).app
+    import carb
+    settings = carb.settings.get_settings()
+    settings.set("/rtx/post/aa/op", 0)
+    settings.set("/rtx/post/aa/quality", 0)
+    settings.set("/app/window/width", 960)
+    settings.set("/app/window/height", 540)
+    for key in (
+        "/rtx/shadows/enabled",
+        "/rtx/reflections/enabled",
+        "/rtx/indirectDiffuse/enabled",
+        "/rtx/translucency/enabled",
+        "/rtx/ambientOcclusion/enabled",
+    ):
+        settings.set(key, False)
     try:
         play(args, app)
     finally:
@@ -33,6 +51,7 @@ def main() -> None:
 
 
 def play(args, app) -> None:
+    import omni.ui as ui
     import torch
     from isaaclab.assets import Articulation
     import isaaclab.sim as sim_utils
@@ -62,14 +81,13 @@ def play(args, app) -> None:
     )
     sim_utils.spawn_light(
         "/World/keyLight",
-        sim_utils.DistantLightCfg(color=(0.9, 0.9, 0.9), intensity=3000.0),
+        sim_utils.DistantLightCfg(color=(0.9, 0.9, 0.9), intensity=1800.0),
         translation=(2.0, -2.0, 4.0),
     )
-    sim_utils.spawn_light(
-        "/World/skyLight",
-        sim_utils.DomeLightCfg(color=(0.8, 0.8, 0.8), intensity=800.0),
-    )
-    robot = Articulation(robot_cfg().replace(prim_path="/World/ReferenceRobot"))
+    robot_cfg_instance = robot_cfg().replace(prim_path="/World/ReferenceRobot")
+    robot_cfg_instance.spawn.activate_contact_sensors = False
+    robot_cfg_instance.spawn.articulation_props.enabled_self_collisions = False
+    robot = Articulation(robot_cfg_instance)
     sim.reset()
     sim.set_camera_view(eye=(2.8, -2.8, 1.8), target=(0.0, 0.0, 0.8))
     robot_joint_ids, names = robot.find_joints(JOINT_NAMES, preserve_order=True)
@@ -78,9 +96,14 @@ def play(args, app) -> None:
 
     root = robot.data.default_root_state.clone()
     joints = robot.data.default_joint_pos.clone()
-    sim_dt = sim.get_physics_dt()
     frame_period = 1.0 / fps
     frame = args.start_frame
+    wall_start = time.perf_counter()
+    stats = ui.Window("Reference timing", width=280, height=100)
+    with stats.frame:
+        with ui.VStack(spacing=4):
+            ui.Label("Reference playback")
+            timing_label = ui.Label("")
     print(f"Playing {args.clip} ({len(joint_pos)} frames at {fps:g} Hz)", flush=True)
     while app.is_running():
         root[0, :3] = torch.from_numpy(pelvis_pos[frame]).to(robot.device)
@@ -91,8 +114,15 @@ def play(args, app) -> None:
         robot.write_root_state_to_sim(root)
         robot.write_joint_state_to_sim(joints, torch.zeros_like(joints))
         sim.physics_sim_view.update_articulations_kinematic()
-        robot.update(sim_dt)
-        sim.render()
+        sim_time = (frame - args.start_frame) / fps
+        real_time = time.perf_counter() - wall_start
+        timing_label.text = (
+            f"Sim time: {sim_time:7.2f} s\n"
+            f"Real time: {real_time:7.2f} s\n"
+            f"RTF: {sim_time / real_time if real_time > 0 else 0.0:5.2f}x"
+        )
+        if frame % args.render_every == 0:
+            sim.render()
 
         frame += 1
         if frame == len(joint_pos):
