@@ -26,7 +26,7 @@ def main():
     parser.add_argument("--device", default="cuda:0", help="Simulation device (default: cuda:0).")
     args = parser.parse_args()
     project = Path(__file__).resolve().parents[1]
-    python = "/isaac-sim/python.sh" if Path("/isaac-sim/python.sh").exists() else sys.executable
+    python = "/isaac-sim/python.sh"
     if args.clip is None:
         parser.error("Provide a clip.")
     clip = args.clip.expanduser().resolve()

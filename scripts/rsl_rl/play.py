@@ -378,6 +378,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env_cfg.terminations.ee_deviation = None
         env_cfg.terminations.com_deviation = None
         print(f"[INFO] Playback samples uniformly from {REFERENCE.num_clips} training clips on each reset.")
+    if args_cli.video:
+        env_cfg.viewer.resolution = (1920, 1080)
     if args_cli.record_policy_dir:
         env_cfg.scene.num_envs = 1
         env_cfg.viewer.resolution = (1920, 1080)
