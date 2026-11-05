@@ -139,13 +139,19 @@ class ObservationsCfg:
         command = ObsTerm(func=mdp.motion_command)
         motion_anchor_pos_b = ObsTerm(func=mdp.motion_anchor_pos_b)
         motion_anchor_ori_b = ObsTerm(func=mdp.motion_anchor_ori_b)
-        body_pos = ObsTerm(func=mdp.robot_body_pos_b)
-        body_ori = ObsTerm(func=mdp.robot_body_ori_b)
-        base_lin_vel = ObsTerm(func=mdp.imu_lin_vel)
-        base_ang_vel = ObsTerm(func=mdp.imu_ang_vel)
-        joint_pos = ObsTerm(func=mdp.selected_joint_pos_rel)
-        joint_vel = ObsTerm(func=mdp.selected_joint_vel_rel)
-        actions = ObsTerm(func=mdp.last_action)
+        motion_body_pos_b = ObsTerm(func=mdp.motion_body_pos_b)
+        motion_body_ori_b = ObsTerm(func=mdp.motion_body_ori_b)
+        motion_body_lin_vel_w = ObsTerm(func=mdp.motion_body_lin_vel_w)
+        motion_body_ang_vel_w = ObsTerm(func=mdp.motion_body_ang_vel_w)
+        robot_body_pos_b = ObsTerm(func=mdp.robot_body_pos_b)
+        robot_body_ori_b = ObsTerm(func=mdp.robot_body_ori_b)
+        robot_body_lin_vel_w = ObsTerm(func=mdp.robot_body_lin_vel_w)
+        robot_body_ang_vel_w = ObsTerm(func=mdp.robot_body_ang_vel_w)
+        robot_base_lin_vel = ObsTerm(func=mdp.imu_lin_vel)
+        robot_base_ang_vel = ObsTerm(func=mdp.imu_ang_vel)
+        robot_joint_pos = ObsTerm(func=mdp.selected_joint_pos_rel)
+        robot_joint_vel = ObsTerm(func=mdp.selected_joint_vel_rel)
+        robot_actions = ObsTerm(func=mdp.last_action)
         motion_clip = ObsTerm(func=mdp.motion_clip_one_hot)
 
     # observation groups
@@ -238,7 +244,7 @@ class TerminationsCfg:
     )
     anchor_ori = DoneTerm(
         func=mdp.bad_anchor_ori,
-        params={"asset_cfg": SceneEntityCfg("robot"), "threshold": 1.6},
+        params={"asset_cfg": SceneEntityCfg("robot"), "threshold": 0.8},
     )
     ee_body_pos = DoneTerm(
         func=mdp.bad_motion_body_pos_z_only,
