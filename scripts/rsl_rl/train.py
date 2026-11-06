@@ -250,7 +250,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     print("\n" + "=" * 80)
     if IS_TRACKING_TASK:
         print(f"[INFO] Training reference clips: {len(clip_paths)}")
-        print("[INFO] Adaptive reference-state initialization; 93-value actor and 286-value critic.")
     else:
         print(f"[INFO] Training clips: {REFERENCE.num_clips}")
         print(f"[INFO] Directory: {REFERENCE.path}")
