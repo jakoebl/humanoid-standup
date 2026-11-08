@@ -75,6 +75,19 @@ def motion_global_body_angular_velocity_error_exp(
     return torch.exp(-error.mean(-1) / std**2)
 
 
+def joint_torque_limit_penalty(
+    env: ManagerBasedRLEnv,
+    threshold: float = 0.7,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize joint torque ratios above a normalized soft limit threshold."""
+    asset = env.scene[asset_cfg.name]
+    torque = torch.abs(asset.data.applied_torque[:, asset_cfg.joint_ids])
+    limits = asset.data.joint_effort_limits[:, asset_cfg.joint_ids]
+    excess = torch.relu((torque / limits - threshold) / (1.0 - threshold))
+    return torch.mean(torch.square(excess), dim=1)
+
+
 def self_collision_cost(env, sensor_names, force_threshold=10.0):
     """Count physics substeps with robot-to-robot contact, excluding the ground."""
     hits = None
