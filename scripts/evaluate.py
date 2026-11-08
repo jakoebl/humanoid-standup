@@ -2,7 +2,7 @@
 """Run full-clip trials with the selected evaluation.
 
 --checkpoint: model to evaluate; task and clips are inferred from its path.
---criterion: standing_up, foot_motion, lifted_foot, jitteriness, actuator_effort, worst_rewards or standing_push.
+--criterion: standing_up, foot_motion, lifted_foot, jitteriness, actuator_effort, joints, worst_rewards or standing_push.
 Omit to run all unpushed evaluations; standing_push is a separate disturbed rollout.
 --task: optional task override for relocated checkpoints.
 --num-envs: parallel trials per clip (default: 1000).
@@ -146,11 +146,14 @@ def run_clip(env, policy, clip_index, evaluations, num_frames=None):
         for frame in range(length):
             rewards = None
             if frame:
-                obs, rewards, dones, _ = env.step(policy(obs))
+                actions = policy(obs)
+                obs, rewards, dones, _ = env.step(actions)
                 if torch.any(dones):
                     raise RuntimeError("Unexpected reset during full-clip evaluation.")
             for evaluation in evaluations:
                 # each evaluation stores the data it needs
+                if frame and hasattr(evaluation, "observe_action"):
+                    evaluation.observe_action(raw)
                 evaluation.observe(raw, frame, rewards)
     return length
 
@@ -158,7 +161,7 @@ def run_clip(env, policy, clip_index, evaluations, num_frames=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument("--criterion", choices=("standing_up", "foot_motion", "lifted_foot", "jitteriness", "actuator_effort", "worst_rewards", "standing_push"))
+    parser.add_argument("--criterion", choices=("standing_up", "foot_motion", "lifted_foot", "jitteriness", "actuator_effort", "joints", "worst_rewards", "standing_push"))
     parser.add_argument("--task")
     parser.add_argument("--num-envs", type=int, default=1000)
     parser.add_argument("--clip-index", type=int)
@@ -218,6 +221,7 @@ def main():
         import humanoid_standup.tasks  # noqa: F401
         from evaluate.actuator_effort import ActuatorEffort
         from evaluate.jitteriness import Jitteriness
+        from evaluate.joints import JointPlots
         from evaluate.lifted_foot import LiftedFoot
         from evaluate.foot_motion import StandingFootMotion
         from evaluate.rewards import RewardEvaluation, TrajectoryCache, render_attempts
@@ -283,6 +287,8 @@ def main():
                     evaluations.append(Jitteriness(raw.num_envs, raw.step_dt))
                 if args.criterion in (None, "actuator_effort"):
                     evaluations.append(ActuatorEffort(raw.num_envs, raw.step_dt))
+                if args.criterion in (None, "joints"):
+                    evaluations.append(JointPlots(raw.step_dt))
                 if args.criterion in (None, "standing_up"):
                     evaluations.append(StandingUp(raw.num_envs, raw.step_dt))
                 if args.criterion == "standing_push":
