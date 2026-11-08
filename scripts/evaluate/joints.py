@@ -1,4 +1,4 @@
-"""Plot one rollout of every joint with its position and torque limits."""
+"""Plot one rollout of every joint against its reference motion and position and torque limits."""
 
 import csv
 from html import escape
@@ -43,69 +43,111 @@ def _clip_bounds(action_term, joint_names):
     return bounds
 
 
-def _plot_svg(path, title, ylabel, times, values, lower, upper, lower_label, upper_label, series=None):
-    series = series or []
-    values = np.asarray(values, dtype=np.float64)
-    lower, upper = float(lower), float(upper)
-    finite_series = [np.asarray(item[1], dtype=np.float64) for item in series]
-    all_values = np.concatenate([values, *(item[np.isfinite(item)] for item in finite_series)])
-    plot_min = min(lower, float(all_values.min()))
-    plot_max = max(upper, float(all_values.max()))
-    if not np.isfinite([plot_min, plot_max]).all():
+# Fixed categorical order; dash patterns keep series distinct without color.
+SURFACE, INK, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
+ACTUAL = ("#2a78d6", None)
+REFERENCE = ("#eb6834", "8 4")
+CLIPPED_ACTION = ("#1baf7a", "3 3")
+LIMIT_DASH = "6 4"
+BODY_GROUPS = (("left_leg", "Left leg"), ("right_leg", "Right leg"), ("waist", "Waist"),
+               ("left_arm", "Left arm"), ("right_arm", "Right arm"), ("other", "Other"))
+
+
+def _body_group(name):
+    name = str(name).lower()
+    if "waist" in name:
+        return "waist"
+    side = "left" if name.startswith("left") else "right" if name.startswith("right") else None
+    if side and any(part in name for part in ("hip", "knee", "ankle")):
+        return f"{side}_leg"
+    if side and any(part in name for part in ("shoulder", "elbow")):
+        return f"{side}_arm"
+    return "other"
+
+
+def _plot_svg(path, title, ylabel, times, series, limits):
+    """Write a line chart; series are (label, values, (color, dash)), limits are (label, value)."""
+    series = [(label, np.asarray(values, dtype=np.float64), style) for label, values, style in series]
+    limit_values = [float(value) for _, value in limits]
+    all_values = np.concatenate([values[np.isfinite(values)] for _, values, _ in series] + [limit_values])
+    if all_values.size == 0 or not np.isfinite(limit_values).all():
         raise ValueError(f"Cannot plot nonfinite limits or samples for {title}.")
-    if plot_min == plot_max:
-        padding = max(abs(plot_min) * .05, 1.)
-    else:
-        padding = (plot_max - plot_min) * .05
-    plot_min -= padding
-    plot_max += padding
-    left, top, width, height = 90., 55., 820., 365.
+    plot_min, plot_max = float(all_values.min()), float(all_values.max())
+    padding = max(abs(plot_min) * .05, 1.) if plot_min == plot_max else (plot_max - plot_min) * .05
+    plot_min, plot_max = plot_min - padding, plot_max + padding
+    left, top, width, height = 80., 76., 760., 350.
     time_max = max(float(times[-1]), 1e-12)
     x = lambda time: left + width * float(time) / time_max
     y = lambda value: top + height * (plot_max - float(value)) / (plot_max - plot_min)
-    def points_for(series_values):
-        return " ".join(
-            f"{x(time):.2f},{y(value):.2f}"
-            for time, value in zip(times, series_values)
-            if np.isfinite(value)
-        )
 
-    points = points_for(values)
+    def points_for(values):
+        return " ".join(f"{x(time):.2f},{y(value):.2f}"
+                        for time, value in zip(times, values) if np.isfinite(value))
+
+    def line(points, color, dash, width_px=2):
+        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+        return (f'<polyline points="{points}" fill="none" stroke="{color}" stroke-width="{width_px}" '
+                f'stroke-linejoin="round" stroke-linecap="round"{dash_attr}/>')
+
     svg = [
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500" role="img">',
         f"<title>{escape(title)}</title>",
-        '<rect width="1000" height="500" fill="white"/>',
-        '<g font-family="sans-serif" font-size="14" fill="#222">',
-        f'<text x="500" y="28" text-anchor="middle" font-size="20">{escape(title)}</text>',
+        f'<rect width="1000" height="500" fill="{SURFACE}"/>',
+        f'<g font-family="sans-serif" font-size="13" fill="{INK}">',
+        f'<text x="{left}" y="28" font-size="18" font-weight="600">{escape(title)}</text>',
     ]
+    # Legend row: swatch in series color, label in text ink.
+    legend_x = left
+    for label, _, (color, dash) in [*series, ("limits", None, (MUTED, LIMIT_DASH))]:
+        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+        svg.append(f'<path d="M {legend_x:.1f} 52 h 28" stroke="{color}" stroke-width="2"{dash_attr}/>')
+        svg.append(f'<text x="{legend_x + 34:.1f}" y="56">{escape(label)}</text>')
+        legend_x += 34 + 7.5 * len(label) + 26
+    for value in np.linspace(plot_min, plot_max, 6):
+        svg.append(f'<path d="M {left} {y(value):.2f} h {width}" stroke="{GRID}"/>')
+        svg.append(f'<text x="{left - 8}" y="{y(value) + 4:.2f}" text-anchor="end" fill="{MUTED}">{value:.3g}</text>')
     for fraction in np.linspace(0, 1, 6):
-        value = plot_min + fraction * (plot_max - plot_min)
-        svg.append(f'<path d="M {left} {y(value):.2f} h {width}" stroke="#e5e5e5"/>')
-        svg.append(f'<text x="{left - 10}" y="{y(value) + 5:.2f}" text-anchor="end">{value:.4g}</text>')
-    for value, label, color in ((lower, lower_label, "#cc4422"), (upper, upper_label, "#cc4422")):
-        svg.extend([
-            f'<path d="M {left} {y(value):.2f} h {width}" stroke="{color}" stroke-dasharray="7 5"/>',
-            f'<text x="920" y="{y(value) + 5:.2f}" fill="{color}">{escape(label)}</text>',
-        ])
+        svg.append(f'<text x="{x(time_max * fraction):.2f}" y="{top + height + 20}" text-anchor="middle" '
+                   f'fill="{MUTED}">{time_max * fraction:.3g}</text>')
+    for label, value in limits:
+        svg.append(f'<path d="M {left} {y(value):.2f} h {width}" stroke="{MUTED}" stroke-dasharray="{LIMIT_DASH}"/>')
+        svg.append(f'<text x="{left + width + 8}" y="{y(value) + 4:.2f}" fill="{MUTED}">'
+                   f'{escape(label)} {float(value):.3g}</text>')
+    # Draw back to front so the actual trajectory stays on top.
+    for label, values, (color, dash) in reversed(series):
+        svg.append(line(points_for(values), color, dash))
     svg.extend([
-        f'<polyline points="{points}" fill="none" stroke="#4477aa" stroke-width="2"/>',
-        f'<text x="{left:.2f}" y="48" fill="#4477aa">actual joint position</text>',
-        f'<path d="M {left} {top} V {top + height} H {left + width}" fill="none" stroke="#222"/>',
-    ])
-    for offset, (label, series_values, color) in enumerate(series):
-        series_points = points_for(series_values)
-        svg.append(f'<polyline points="{series_points}" fill="none" stroke="{color}" '
-                   f'stroke-width="2" stroke-dasharray="5 3"/>')
-        svg.append(f'<text x="{left + offset * 145:.2f}" y="48" fill="{color}">{escape(label)}</text>')
-    for fraction in np.linspace(0, 1, 6):
-        svg.append(f'<text x="{x(time_max * fraction):.2f}" y="445" text-anchor="middle">'
-                   f'{time_max * fraction:.4g}</text>')
-    svg.extend([
-        '<text x="500" y="480" text-anchor="middle">Time (s)</text>',
-        f'<text transform="translate(22 240) rotate(-90)" text-anchor="middle">{escape(ylabel)}</text>',
+        f'<path d="M {left} {top} V {top + height} H {left + width}" fill="none" stroke="{MUTED}"/>',
+        f'<text x="{left + width / 2}" y="{top + height + 44}" text-anchor="middle" fill="{MUTED}">Time (s)</text>',
+        f'<text transform="translate(22 {top + height / 2}) rotate(-90)" text-anchor="middle" fill="{MUTED}">'
+        f'{escape(ylabel)}</text>',
         '</g></svg>',
     ])
     Path(path).write_text("\n".join(svg), encoding="utf-8")
+
+
+def _index_html(title, groups, errors):
+    """Overview page: one section per body part, position and torque side by side."""
+    rows = []
+    for group, label, joints in groups:
+        rows.append(f'<h2>{escape(label)}</h2>')
+        for name, position_file, torque_file in joints:
+            rms, peak = errors.get(name, (np.nan, np.nan))
+            rows.append(
+                f'<section><h3>{escape(name)}</h3><p>RMS tracking error {rms:.3f} rad · '
+                f'max {peak:.3f} rad</p><div class="pair">'
+                f'<img src="{escape(position_file)}" alt="{escape(name)} position">'
+                f'<img src="{escape(torque_file)}" alt="{escape(name)} torque"></div></section>')
+    return "\n".join([
+        "<!doctype html><html><head><meta charset=\"utf-8\">",
+        f"<title>{escape(title)}</title>",
+        "<style>body{font-family:sans-serif;margin:24px;background:#fcfcfb;color:#0b0b0b}"
+        "h2{border-bottom:1px solid #e4e3df;padding-bottom:4px;margin-top:32px}"
+        "h3{margin:16px 0 2px;font-size:15px}p{margin:0 0 6px;color:#52514e;font-size:13px}"
+        ".pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:8px}"
+        "img{width:100%;border:1px solid #e4e3df}</style></head><body>",
+        f"<h1>{escape(title)}</h1>", *rows, "</body></html>",
+    ])
 
 
 class JointPlots:
@@ -118,6 +160,7 @@ class JointPlots:
         self.last_frame = -1
         self.times = []
         self.positions = []
+        self.reference_positions = []
         self.torques = []
         self.unclipped_actions = []
         self.clipped_actions = []
@@ -133,7 +176,7 @@ class JointPlots:
             raise ValueError("Joint evaluation found no non-hand joints.")
         self.joint_names = [robot.joint_names[index] for index in self.joint_indices]
         data = robot.data
-        self.position_limits = _as_numpy(data.soft_joint_pos_limits[0])[self.joint_indices]
+        self.position_limits = _as_numpy(data.joint_pos_limits[0])[self.joint_indices]
         effort_limits = _as_numpy(data.joint_effort_limits[0])
         if effort_limits.ndim == 1:
             self.torque_limits = np.abs(effort_limits)[self.joint_indices]
@@ -149,14 +192,24 @@ class JointPlots:
             raise ValueError("Joint limits must be ordered and torque limits strictly positive.")
         self._pending_unclipped_action = np.full(len(self.joint_names), np.nan)
         self._pending_clipped_action = np.full(len(self.joint_names), np.nan)
+        # The motion command lists reference joints by robot joint index.
+        motion_joint_ids = [int(index) for index in raw.command_manager.get_term("motion").joint_indexes]
+        plot_ids = {int(index): position for position, index in enumerate(self.joint_indices)}
+        self.reference_columns = np.asarray(
+            [column for column, index in enumerate(motion_joint_ids) if index in plot_ids], dtype=np.int64)
+        self.reference_plot_ids = np.asarray(
+            [plot_ids[index] for index in motion_joint_ids if index in plot_ids], dtype=np.int64)
 
     def observe(self, raw, frame, rewards=None):
         if frame != self.last_frame + 1:
             raise ValueError("Joint plots require consecutive frames starting at zero.")
         data = raw.scene["robot"].data
+        reference = np.full(len(self.joint_names), np.nan)
+        motion_reference = _as_numpy(raw.command_manager.get_term("motion").joint_pos[0])
+        reference[self.reference_plot_ids] = motion_reference[self.reference_columns]
         self.update(frame, _as_numpy(data.joint_pos[0])[self.joint_indices],
                     _as_numpy(data.applied_torque[0])[self.joint_indices],
-                    self._pending_unclipped_action, self._pending_clipped_action)
+                    self._pending_unclipped_action, self._pending_clipped_action, reference)
 
     def observe_action(self, raw):
         action_term = raw.action_manager.get_term("joint_pos")
@@ -201,7 +254,7 @@ class JointPlots:
         self._pending_unclipped_action[plot_action_ids] = unclipped_action
         self._pending_clipped_action[plot_action_ids] = clipped_action
 
-    def update(self, frame, positions, torques, action=None, clipped_action=None):
+    def update(self, frame, positions, torques, action=None, clipped_action=None, reference=None):
         if frame != self.last_frame + 1:
             raise ValueError("Joint plots require consecutive frames starting at zero.")
         positions, torques = _as_numpy(positions), _as_numpy(torques)
@@ -214,23 +267,43 @@ class JointPlots:
             action = np.full(expected, np.nan)
         if clipped_action is None:
             clipped_action = np.full(expected, np.nan)
-        action, clipped_action = _as_numpy(action), _as_numpy(clipped_action)
+        if reference is None:
+            reference = np.full(expected, np.nan)
+        action, clipped_action, reference = _as_numpy(action), _as_numpy(clipped_action), _as_numpy(reference)
         if action.shape != expected or clipped_action.shape != expected:
             raise ValueError("Actions must match the robot joint count.")
+        if reference.shape != expected:
+            raise ValueError("Reference joint positions must match the robot joint count.")
         if not (np.isfinite(action) | np.isnan(action)).all() or not (np.isfinite(clipped_action) | np.isnan(clipped_action)).all():
             raise ValueError("Actions must be finite or unavailable for passive joints.")
+        if not (np.isfinite(reference) | np.isnan(reference)).all():
+            raise ValueError("Reference joint positions must be finite or unavailable.")
         self.times.append(frame * self.step_dt)
         self.positions.append(positions.copy())
+        self.reference_positions.append(reference.copy())
         self.torques.append(torques.copy())
         self.unclipped_actions.append(action.copy())
         self.clipped_actions.append(clipped_action.copy())
         self.last_frame = frame
 
+    def tracking_errors(self):
+        """Per-joint RMS and maximum absolute position error against the reference, in rad."""
+        error = np.asarray(self.positions) - np.asarray(self.reference_positions)
+        result = {}
+        for index, name in enumerate(self.joint_names):
+            values = error[:, index][np.isfinite(error[:, index])]
+            if values.size:
+                result[name] = (float(np.sqrt(np.mean(values ** 2))), float(np.abs(values).max()))
+        return result
+
     def summary(self):
         if not self.times:
             raise ValueError("Joint plots require at least one observed frame.")
+        errors = self.tracking_errors()
         return {"run_env_id": 0, "samples": len(self.times), "step_dt_s": self.step_dt,
-                "joints": self.joint_names, "position_units": "rad", "torque_units": "N m"}
+                "joints": self.joint_names, "position_units": "rad", "torque_units": "N m",
+                "position_tracking_error_rad": {name: {"rms": rms, "max": peak}
+                                                for name, (rms, peak) in errors.items()}}
 
     def save(self, output):
         if not self.times:
@@ -239,25 +312,43 @@ class JointPlots:
         output.mkdir(parents=True, exist_ok=True)
         times = np.asarray(self.times)
         positions, torques = np.asarray(self.positions), np.asarray(self.torques)
+        references = np.asarray(self.reference_positions)
         unclipped_actions, clipped_actions = np.asarray(self.unclipped_actions), np.asarray(self.clipped_actions)
         with (output / "joints.csv").open("w", newline="") as stream:
             writer = csv.writer(stream)
             writer.writerow(["time_s"] + [f"{name}_position_rad" for name in self.joint_names] +
+                            [f"{name}_reference_position_rad" for name in self.joint_names] +
                             [f"{name}_torque_nm" for name in self.joint_names] +
                             [f"{name}_unclipped_action_rad" for name in self.joint_names] +
                             [f"{name}_clipped_action_rad" for name in self.joint_names])
-            writer.writerows([time, *position, *torque, *unclipped_action, *clipped_action]
-                             for time, position, torque, unclipped_action, clipped_action
-                             in zip(times, positions, torques, unclipped_actions, clipped_actions))
+            writer.writerows([time, *position, *reference, *torque, *unclipped_action, *clipped_action]
+                             for time, position, reference, torque, unclipped_action, clipped_action
+                             in zip(times, positions, references, torques, unclipped_actions, clipped_actions))
+        errors = self.tracking_errors()
+        # Group plots by body part; robot joint order is kinematic within each group.
+        grouped = {group: [] for group, _ in BODY_GROUPS}
         for index, name in enumerate(self.joint_names):
-            stem = name.replace("/", "_")
-            position_limits = self.position_limits[index]
-            torque_limit = self.torque_limits[index]
-            _plot_svg(output / f"{stem}_position.svg", f"{name} joint position", "Position (rad)",
-                      times, positions[:, index], position_limits[0], position_limits[1],
-                      "lower limit", "upper limit",
-                      series=[("unclipped action", unclipped_actions[:, index], "#ddaa33"),
-                              ("clipped action", clipped_actions[:, index], "#33aa55")])
-            _plot_svg(output / f"{stem}_torque.svg", f"{name} joint torque", "Torque (N m)",
-                      times, torques[:, index], -torque_limit, torque_limit,
-                      "negative limit", "positive limit")
+            grouped[_body_group(name)].append(index)
+        groups = []
+        for group, label in BODY_GROUPS:
+            if not grouped[group]:
+                continue
+            (output / group).mkdir(exist_ok=True)
+            joints = []
+            for order, index in enumerate(grouped[group], start=1):
+                name = self.joint_names[index]
+                stem = f"{group}/{order:02d}_{name.replace('/', '_')}"
+                lower, upper = self.position_limits[index]
+                torque_limit = self.torque_limits[index]
+                _plot_svg(output / f"{stem}_position.svg", f"{name} position", "Position (rad)", times,
+                          [("actual", positions[:, index], ACTUAL),
+                           ("reference", references[:, index], REFERENCE),
+                           ("clipped action", clipped_actions[:, index], CLIPPED_ACTION)],
+                          [("upper", upper), ("lower", lower)])
+                _plot_svg(output / f"{stem}_torque.svg", f"{name} torque", "Torque (N m)", times,
+                          [("applied torque", torques[:, index], ACTUAL)],
+                          [("+limit", torque_limit), ("-limit", -torque_limit)])
+                joints.append((name, f"{stem}_position.svg", f"{stem}_torque.svg"))
+            groups.append((group, label, joints))
+        (output / "index.html").write_text(_index_html("Joint evaluation (environment 0)", groups, errors),
+                                           encoding="utf-8")

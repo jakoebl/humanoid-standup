@@ -2,11 +2,13 @@
 """Run full-clip trials with the selected evaluation.
 
 --checkpoint: model to evaluate; task and clips are inferred from its path.
+Action clipping matches the run's params/env.yaml: on if it trained clipped, off otherwise.
 --criterion: standing_up, foot_motion, lifted_foot, jitteriness, actuator_effort, joints, worst_rewards or standing_push.
 Omit to run all unpushed evaluations; standing_push is a separate disturbed rollout.
 --task: optional task override for relocated checkpoints.
 --num-envs: parallel trials per clip (default: 1000).
 --clip-index: evaluate one clip; default is every training clip.
+--clips-dir: use the .npz clips in this directory instead of the run's saved training clips.
 --record: enable video rendering and recording; disabled by default.
 --output: fresh result directory; defaults to evaluation/<run>_<model>_<YYYY-MM-DD_HH-MM-SS>.
 --seed: evaluation seed (default: 42).
@@ -23,7 +25,7 @@ import math
 from pathlib import Path
 import sys
 
-from evaluate.checkpoints import infer_task, resolve_clips
+from evaluate.checkpoints import infer_task, resolve_clips, training_action_clip
 
 
 def json_safe(value):
@@ -165,6 +167,7 @@ def main():
     parser.add_argument("--task")
     parser.add_argument("--num-envs", type=int, default=1000)
     parser.add_argument("--clip-index", type=int)
+    parser.add_argument("--clips-dir", type=Path)
     parser.add_argument("--record", action="store_true", help="Enable video rendering and recording.")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--seed", type=int, default=42)
@@ -183,7 +186,8 @@ def main():
         parser.error("--foot-lift-threshold must be finite and nonnegative.")
     try:
         task = args.task or infer_task(checkpoint)
-        clips = resolve_clips(checkpoint, Path(__file__).resolve().parents[1], task)
+        clips = resolve_clips(checkpoint, Path(__file__).resolve().parents[1], task, args.clips_dir)
+        action_clip = training_action_clip(checkpoint)
     except ValueError as error:
         parser.error(str(error))
 
@@ -233,7 +237,9 @@ def main():
         # copy the task environment and restore training noise for evaluation
         env_cfg = parse_env_cfg(task, device=args.device, num_envs=args.num_envs)
         env_cfg.seed = args.seed
-        env_cfg.actions.joint_pos.clip = None
+        # Clip actions exactly as during training.
+        env_cfg.actions.joint_pos.clip = action_clip
+        print(f"[evaluate] Action clipping {'on' if action_clip else 'off'}, as in training.", flush=True)
         configure_evaluation_randomization(env_cfg, CommandsCfg().motion)
         # load reference clips
         env_cfg.commands.motion.motion_files = [str(clip) for clip in clips]
@@ -265,7 +271,8 @@ def main():
                 distribution["class_name"] = GaussianDistribution
         runner = OnPolicyRunner(env, runner_cfg, log_dir=None, device=args.device)
         print(f"[evaluate] Loading checkpoint: {checkpoint}", flush=True)
-        runner.load(str(checkpoint))
+        # Only the actor is evaluated, so older runs with a different critic still load.
+        runner.load(str(checkpoint), load_cfg={"actor": True})
         policy = runner.get_inference_policy(device=args.device)
 
         indexes = range(len(clips)) if args.clip_index is None else [args.clip_index]
@@ -310,6 +317,7 @@ def main():
                 summary = {"checkpoint": str(checkpoint), "clip": str(clips[index]),
                            "trials": raw.num_envs, "frames": length, "fps": 1 / raw.step_dt,
                            "early_termination": False,
+                           "action_clipping": action_clip is not None,
                            "criterion": args.criterion or "all",
                            "evaluations": {evaluation.name: evaluation.summary() for evaluation in evaluations},
                            "environment": environment_summary(raw, task, agent_cfg)}                           
