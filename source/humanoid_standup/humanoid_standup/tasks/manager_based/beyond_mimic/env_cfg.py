@@ -240,7 +240,7 @@ class RewardsCfg:
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=JOINT_NAMES, preserve_order=True)},
     )
     self_collisions = RewTerm(
-        func=mdp.self_collision_cost, weight=-100.0,
+        func=mdp.self_collision_cost, weight=-10.0,
         params={"sensor_names": ["self_contact_" + name for name in CONTACT_BODY_NAMES],
                 "force_threshold": 1.0},
     )
