@@ -1,4 +1,6 @@
-"""Isaac Lab G1 asset with mjlab's motor gains and nominal pose."""
+"""Isaac Lab G1 asset with rubber hands, mjlab's motor gains and nominal pose."""
+
+from pathlib import Path
 
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
@@ -9,6 +11,8 @@ from .constants import MOTOR_GROUPS, NATURAL_FREQ
 
 def robot_cfg():
     cfg = G1_29DOF_CFG.copy()
+    # The rev 1.0 asset fuses an unactuated rubber hand into each *_wrist_yaw_link.
+    cfg.spawn.usd_path = str(Path(__file__).parent / "assets" / "g1_29dof_rev_1_0.usd")
     cfg.spawn.activate_contact_sensors = True
     cfg.spawn.articulation_props.enabled_self_collisions = True
     cfg.init_state = ArticulationCfg.InitialStateCfg(
@@ -21,7 +25,6 @@ def robot_cfg():
         },
         joint_vel={".*": 0.0},
     )
-    hands = cfg.actuators["hands"]
     cfg.actuators = {
         name: ImplicitActuatorCfg(
             joint_names_expr=expressions, effort_limit_sim=effort, velocity_limit_sim=velocity,
@@ -30,5 +33,4 @@ def robot_cfg():
         )
         for name, (expressions, armature, effort, velocity) in MOTOR_GROUPS.items()
     }
-    cfg.actuators["hands"] = hands
     return cfg
