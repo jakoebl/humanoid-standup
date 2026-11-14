@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training History</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0: #f4f4f2;
+  --surface-1: #fcfcfb;
+  --surface-2: #efeeeb;
+  --border: #dddcd7;
+  --grid: #e6e5e1;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #7a7974;
+  --accent: #2a78d6;
+  --accent-soft: #dce9fa;
+  --warning: #9a6700;
+  --warning-soft: #fbefd2;
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #242422;
+    --border: #34332f; --grid: #2b2a27;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8e8d86;
+    --accent: #3987e5; --accent-soft: #1c2c42;
+    --warning: #e0b04a; --warning-soft: #3a2e12;
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+    --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #242422;
+  --border: #34332f; --grid: #2b2a27;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8e8d86;
+  --accent: #3987e5; --accent-soft: #1c2c42;
+  --warning: #e0b04a; --warning-soft: #3a2e12;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--surface-0); color: var(--text-primary);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+code, pre, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface-1);
+}
+header h1 { font-size: 15px; margin: 0; }
+header .stats { color: var(--text-secondary); }
+header label { margin-left: auto; color: var(--text-secondary); display: flex; gap: 6px; align-items: center; }
+main { display: grid; grid-template-columns: minmax(340px, 460px) 1fr; height: calc(100vh - 49px); }
+#timeline { overflow-y: auto; border-right: 1px solid var(--border); background: var(--surface-1); }
+#detail { overflow-y: auto; padding: 16px 20px 40px; }
+@media (max-width: 860px) {
+  main { grid-template-columns: 1fr; height: auto; }
+  #timeline { max-height: 50vh; border-right: 0; border-bottom: 1px solid var(--border); }
+  #detail { padding: 16px; }
+}
+
+.row { display: grid; grid-template-columns: auto 1fr; padding: 0 12px 0 8px; }
+.row.graph-only { height: 14px; overflow: hidden; }
+.graph { position: relative; min-width: calc(var(--lanes) * 1ch + 8px); color: var(--text-muted); }
+.graph pre { position: absolute; inset: 0; margin: 0; line-height: 14px; padding-top: 6px; overflow: hidden; }
+.row.graph-only .graph pre { padding-top: 0; }
+.graph .dot { color: var(--text-primary); font-weight: 700; }
+.graph .dot.has-runs { color: var(--accent); }
+.commit-body { padding: 4px 0 6px; min-width: 0; }
+.commit-line { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+.commit-line code { color: var(--text-muted); }
+.commit-line .subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-meta { color: var(--text-muted); font-size: 11px; }
+.ref {
+  font-size: 10px; padding: 0 5px; border-radius: 8px; white-space: nowrap;
+  border: 1px solid var(--border); color: var(--text-secondary);
+}
+.ref.head { border-color: var(--accent); color: var(--accent); }
+body.runs-only .row.graph-only, body.runs-only .row.no-runs { display: none; }
+body.runs-only .graph { display: none; }
+body.runs-only .row { grid-template-columns: 1fr; padding-left: 12px; }
+
+.run {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 2px 8px; align-items: center;
+  margin: 4px 0 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface-1); cursor: pointer;
+}
+.run:hover { border-color: var(--text-muted); }
+.run.selected { border-color: var(--accent); background: var(--accent-soft); }
+.run .label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run .meta { grid-column: 2 / 4; color: var(--text-secondary); font-size: 11px; }
+.run input { margin: 0; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; }
+.badge { font-size: 10px; padding: 0 5px; border-radius: 8px; white-space: nowrap; }
+.badge.dirty { background: var(--warning-soft); color: var(--warning); }
+.badge.evals { background: var(--surface-2); color: var(--text-secondary); }
+.section-title {
+  padding: 14px 12px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--text-muted);
+}
+.unlinked { padding: 0 12px 6px; }
+.unlinked .why { color: var(--text-muted); font-size: 11px; }
+
+h2 { font-size: 18px; margin: 0 0 4px; }
+h3 { font-size: 13px; margin: 24px 0 8px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 8px 0; }
+.facts dt { color: var(--text-muted); }
+.facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+details > summary { cursor: pointer; color: var(--text-secondary); }
+pre.diff {
+  max-height: 360px; overflow: auto; padding: 10px; margin: 6px 0 0;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px;
+}
+pre.diff .add { color: var(--series-3); }
+pre.diff .del { color: var(--series-8); }
+pre.diff .hunk { color: var(--text-muted); }
+table.diff-stat { width: auto; margin: 6px 0 0; }
+table.diff-stat td { border: 0; padding: 1px 8px 1px 0; }
+.diff-stat .add, .diff-stat .del { font-variant-numeric: tabular-nums; }
+.diff-stat .add { color: var(--series-3); }
+.diff-stat .del { color: var(--series-8); }
+
+.compare { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1);
+}
+.chip button { border: 0; background: none; color: var(--text-muted); cursor: pointer; padding: 0; font-size: 14px; line-height: 1; }
+.chip button:hover { color: var(--text-primary); }
+.hint { color: var(--text-muted); }
+select {
+  font: inherit; color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; max-width: 100%;
+}
+
+.charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-top: 10px; }
+.chart { position: relative; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px 4px; }
+.chart-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.chart-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart svg { display: block; width: 100%; height: 170px; overflow: visible; }
+.chart .axis text { fill: var(--text-muted); font-size: 10px; }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .series { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .crosshair { stroke: var(--text-muted); stroke-width: 1; }
+.chart .hover-dot { stroke: var(--surface-1); stroke-width: 2; }
+.tooltip {
+  position: absolute; pointer-events: none; z-index: 2; min-width: 140px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; box-shadow: 0 4px 14px rgb(0 0 0 / .12); font-size: 12px;
+}
+.tooltip .step { color: var(--text-muted); margin-bottom: 2px; }
+.tooltip .item { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: center; }
+.tooltip .item span:nth-child(2) { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.tooltip .item b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.remove-tag { border: 0; background: none; color: var(--text-muted); cursor: pointer; font-size: 14px; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 5px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { position: sticky; top: 0; background: var(--surface-2); color: var(--text-secondary); font-weight: 600; font-size: 11px; }
+th .dir { color: var(--text-muted); font-weight: 400; }
+td.left, th.left { text-align: left; }
+td.best { font-weight: 700; }
+td.na { color: var(--text-muted); }
+tr:last-child td { border-bottom: 0; }
+td details { text-align: left; }
+td details a { display: block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Training history</h1>
+  <span class="stats" id="stats"></span>
+  <label><input type="checkbox" id="runs-only"> Only commits with runs</label>
+</header>
+<main>
+  <aside id="timeline"></aside>
+  <section id="detail"></section>
+</main>
+<script>const DATA = __DATA__;</script>
+<script>
+const RUN_DETAILS = {};
+const SERIES_COLORS = Array.from({length: 8}, (_, i) => `var(--series-${i + 1})`);
+const DEFAULT_TAGS = [
+  "Train/mean_reward", "Train/mean_episode_length", "Metrics/motion/error_body_pos",
+  "Metrics/motion/error_joint_pos", "Episode_Termination/anchor_pos", "Policy/mean_std",
+];
+
+const runsById = Object.fromEntries(DATA.runs.map(run => [run.id, run]));
+const commitHashes = new Set(DATA.commits.map(c => c.hash).filter(Boolean));
+const runsByCommit = {};
+for (const run of DATA.runs) {
+  if (commitHashes.has(run.commit)) (runsByCommit[run.commit] ??= []).push(run);
+}
+const evalsByRun = {};
+for (const evaluation of DATA.evaluations) (evalsByRun[evaluation.run] ??= []).push(evaluation);
+
+const state = { selected: null, compared: [], tags: storedTags() };
+
+function storedTags() {
+  try { return JSON.parse(localStorage.getItem("dashboard-tags")) ?? DEFAULT_TAGS; } catch { return DEFAULT_TAGS; }
+}
+function storeTags() {
+  try { localStorage.setItem("dashboard-tags", JSON.stringify(state.tags)); } catch {}
+}
+
+const escapeHtml = text => String(text).replace(/[&<>"]/g, ch => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[ch]);
+const fmtDate = iso => iso.slice(0, 16).replace("T", " ");
+function fmtNumber(value) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "–";
+  const abs = Math.abs(value);
+  if (abs >= 1e4) return (value / 1e3).toFixed(abs >= 1e5 ? 0 : 1) + "k";
+  if (abs >= 100) return value.toFixed(0);
+  if (abs >= 1) return value.toFixed(2);
+  if (abs === 0) return "0";
+  return value.toPrecision(3);
+}
+const fmtSteps = steps => steps >= 1000 ? `${+(steps / 1000).toFixed(1)}k` : String(steps);
+
+/* ---------- timeline ---------- */
+
+function runCard(run) {
+  const evals = evalsByRun[run.name]?.length ?? 0;
+  const meta = [
+    fmtDate(run.started),
+    run.iterations ? `${fmtSteps(run.iterations)} it` : null,
+    run.final_reward !== null ? `reward ${fmtNumber(run.final_reward)}` : null,
+    run.experiment !== "beyond_mimic" ? run.experiment : null,
+  ].filter(Boolean).join(" · ");
+  return `<div class="run" data-run="${run.id}">
+    <input type="checkbox" class="compare-box" title="Compare">
+    <span class="label">${escapeHtml(run.label)}</span>
+    <span>${Object.keys(run.diff_stat).length ? '<span class="badge dirty" title="Uncommitted changes when training started">+diff</span> ' : ""}${evals ? `<span class="badge evals">${evals} eval${evals > 1 ? "s" : ""}</span>` : ""}</span>
+    <span class="meta">${meta}</span>
+  </div>`;
+}
+
+function graphHtml(graph, hasRuns) {
+  return escapeHtml(graph).replace("*", `<span class="dot${hasRuns ? " has-runs" : ""}">●</span>`);
+}
+
+function continuation(graph, lines) {
+  const next = graph.replace(/\*/g, "|").replace(/[^|]/g, " ");
+  return Array(lines).fill(escapeHtml(next)).join("\n");
+}
+
+function renderTimeline() {
+  const lanes = Math.max(...DATA.commits.map(c => c.graph.length));
+  const rows = DATA.commits.map(commit => {
+    const graph = `<div class="graph" style="--lanes:${lanes}"><pre>`;
+    if (!commit.hash) return `<div class="row graph-only">${graph}${escapeHtml(commit.graph)}</pre></div><div></div></div>`;
+    const runs = (runsByCommit[commit.hash] ?? []).sort((a, b) => b.started.localeCompare(a.started));
+    const refs = commit.refs.split(", ").filter(Boolean).map(ref =>
+      `<span class="ref${ref.startsWith("HEAD") ? " head" : ""}">${escapeHtml(ref.replace("HEAD -> ", "HEAD → "))}</span>`).join("");
+    return `<div class="row${runs.length ? "" : " no-runs"}">
+      ${graph}${graphHtml(commit.graph, runs.length)}\n${continuation(commit.graph, 60)}</pre></div>
+      <div class="commit-body">
+        <div class="commit-line"><code>${commit.short}</code><span class="subject" title="${escapeHtml(commit.subject)}">${escapeHtml(commit.subject)}</span>${refs}</div>
+        <div class="commit-meta">${fmtDate(commit.date)}</div>
+        ${runs.map(runCard).join("")}
+      </div>
+    </div>`;
+  });
+  const unlinked = DATA.runs.filter(run => !commitHashes.has(run.commit))
+    .sort((a, b) => b.started.localeCompare(a.started));
+  const unlinkedHtml = unlinked.map(run => {
+    const why = run.commit ? `recorded commit ${run.commit.slice(0, 7)}${run.branch ? ` on ${escapeHtml(run.branch)}` : ""} is not in local history` : "no git info recorded";
+    return `<div class="unlinked">${runCard(run)}<div class="why">${why}</div></div>`;
+  }).join("");
+  document.getElementById("timeline").innerHTML = rows.join("") +
+    (unlinked.length ? `<div class="section-title">Runs without a known commit (${unlinked.length})</div>${unlinkedHtml}` : "");
+}
+
+document.getElementById("timeline").addEventListener("click", event => {
+  const card = event.target.closest(".run");
+  if (!card) return;
+  const id = card.dataset.run;
+  if (event.target.classList.contains("compare-box")) toggleCompare(id);
+  else select(id);
+});
+
+function syncTimeline() {
+  for (const card of document.querySelectorAll(".run")) {
+    const id = card.dataset.run;
+    card.classList.toggle("selected", id === state.selected);
+    card.querySelector(".compare-box").checked = id === state.selected || state.compared.includes(id);
+  }
+}
+
+function select(id) {
+  state.selected = id;
+  state.compared = state.compared.filter(other => other !== id);
+  renderDetail();
+}
+
+function toggleCompare(id) {
+  if (id === state.selected) return syncTimeline();
+  if (state.compared.includes(id)) state.compared = state.compared.filter(other => other !== id);
+  else if (state.compared.length < SERIES_COLORS.length - 1) state.compared.push(id);
+  if (!state.selected) select(id); else renderDetail();
+}
+
+/* ---------- detail ---------- */
+
+function loadDetails(run) {
+  if (RUN_DETAILS[run.id]) return Promise.resolve();
+  return new Promise(resolve => {
+    const script = document.createElement("script");
+    script.src = `runs/${encodeURIComponent(run.id)}.js`;
+    script.onload = script.onerror = resolve;
+    document.head.appendChild(script);
+  });
+}
+
+function diffHtml(diff) {
+  return diff.split("\n").map(line => {
+    const cls = line.startsWith("+") && !line.startsWith("+++") ? "add"
+      : line.startsWith("-") && !line.startsWith("---") ? "del" : line.startsWith("@@") ? "hunk" : "";
+    return cls ? `<span class="${cls}">${escapeHtml(line)}</span>` : escapeHtml(line);
+  }).join("\n");
+}
+
+function seriesRuns() {
+  return [state.selected, ...state.compared].map(id => runsById[id]);
+}
+
+async function renderDetail() {
+  syncTimeline();
+  const run = runsById[state.selected];
+  const detail = document.getElementById("detail");
+  const commit = DATA.commits.find(c => c.hash === run.commit);
+  const runs = seriesRuns();
+  const diffFiles = Object.entries(run.diff_stat);
+  detail.innerHTML = `
+    <h2>${escapeHtml(run.label)}</h2>
+    <dl class="facts">
+      <dt>Run</dt><dd class="mono">${run.experiment}/${escapeHtml(run.name)}</dd>
+      <dt>Started</dt><dd>${fmtDate(run.started)}</dd>
+      <dt>Commit</dt><dd>${run.commit ? `<code>${run.commit.slice(0, 7)}</code> ${commit ? escapeHtml(commit.subject) : '<span class="hint">not in local history</span>'}` : '<span class="hint">not recorded</span>'}</dd>
+      <dt>Branch</dt><dd>${escapeHtml(run.branch || "–")}</dd>
+      <dt>Checkpoints</dt><dd>up to model_${run.iterations}.pt</dd>
+      <dt>Clips</dt><dd>${run.clips.length ? escapeHtml(run.clips.join(", ")) : "–"}</dd>
+    </dl>
+    ${diffFiles.length ? `<details id="diff"><summary>Uncommitted changes at launch: ${diffFiles.length} file${diffFiles.length > 1 ? "s" : ""}</summary>
+      <table class="diff-stat">${diffFiles.map(([file, [added, removed]]) => `<tr><td class="left mono">${escapeHtml(file)}</td><td class="add">+${added}</td><td class="del">−${removed}</td></tr>`).join("")}</table>
+      <pre class="diff">Loading…</pre></details>` : ""}
+    <h3>Compare</h3>
+    <div class="compare">${runs.map((r, i) => `<span class="chip"><span class="swatch" style="background:${SERIES_COLORS[i]}"></span>${escapeHtml(r.label)} <span class="hint">${fmtDate(r.started).slice(0, 10)}</span>${i ? `<button data-uncompare="${r.id}" title="Remove">×</button>` : ""}</span>`).join("")}
+      ${runs.length === 1 ? '<span class="hint">Tick the checkbox on other runs to overlay them.</span>' : ""}</div>
+    <h3>Training curves</h3>
+    <div id="tag-picker"></div>
+    <div class="charts" id="charts"><span class="hint">Loading…</span></div>
+    <h3>Evaluations</h3>
+    <div id="evals"></div>`;
+  detail.querySelectorAll("[data-uncompare]").forEach(button =>
+    button.addEventListener("click", () => toggleCompare(button.dataset.uncompare)));
+  renderEvaluations(runs);
+  await Promise.all(runs.map(loadDetails));
+  if (state.selected !== run.id) return;
+  renderCharts();
+  detail.querySelector("#diff")?.addEventListener("toggle", event => {
+    const pre = event.target.querySelector("pre");
+    const diff = RUN_DETAILS[run.id].diff;
+    pre.innerHTML = diff.length > 300000 ? `${diffHtml(diff.slice(0, 300000))}\n… truncated (${(diff.length / 1e6).toFixed(1)} MB)` : diffHtml(diff);
+  }, { once: true });
+}
+
+function renderCharts() {
+  const runs = seriesRuns();
+  const available = [...new Set(runs.flatMap(r => Object.keys(RUN_DETAILS[r.id]?.scalars ?? {})))].sort();
+  let tags = state.tags.filter(tag => available.includes(tag));
+  if (!tags.length) tags = available.slice(0, 4);
+  const groups = {};
+  for (const tag of available.filter(t => !tags.includes(t))) (groups[tag.split("/")[0]] ??= []).push(tag);
+  document.getElementById("tag-picker").innerHTML = available.length ? `<select id="add-tag"><option value="">Add a chart…</option>${
+    Object.entries(groups).map(([group, list]) => `<optgroup label="${group}">${list.map(t => `<option>${escapeHtml(t)}</option>`).join("")}</optgroup>`).join("")
+  }</select>` : "";
+  document.getElementById("add-tag")?.addEventListener("change", event => {
+    state.tags = [...tags, event.target.value];
+    storeTags();
+    renderCharts();
+  });
+  const charts = document.getElementById("charts");
+  if (!available.length) { charts.innerHTML = '<span class="hint">No TensorBoard scalars found for these runs.</span>'; return; }
+  charts.innerHTML = "";
+  for (const tag of tags) {
+    const series = runs.map((r, i) => ({ name: r.label, color: SERIES_COLORS[i], curve: RUN_DETAILS[r.id]?.scalars[tag] }))
+      .filter(s => s.curve);
+    const box = document.createElement("div");
+    box.className = "chart";
+    box.innerHTML = `<div class="chart-head"><span class="chart-title" title="${escapeHtml(tag)}">${escapeHtml(tag)}</span><button class="remove-tag" title="Remove chart">×</button></div>`;
+    box.querySelector(".remove-tag").addEventListener("click", () => {
+      state.tags = tags.filter(t => t !== tag);
+      storeTags();
+      renderCharts();
+    });
+    charts.appendChild(box);
+    lineChart(box, series);
+  }
+}
+
+function niceTicks(min, max, count) {
+  const span = max - min || Math.abs(max) || 1;
+  const raw = span / count;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * magnitude).find(s => s >= raw);
+  const ticks = [];
+  for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-9; v += step) ticks.push(+v.toPrecision(12));
+  const decimals = Math.max(0, -Math.floor(Math.log10(step) + 1e-9) + (step / magnitude === 2.5 ? 1 : 0));
+  return { ticks, label: v => Math.abs(step) >= 1e4 ? fmtNumber(v) : v.toFixed(decimals) };
+}
+
+function lineChart(box, series) {
+  const width = box.clientWidth - 20, height = 170;
+  const margin = { left: 44, right: 6, top: 8, bottom: 20 };
+  const steps = series.flatMap(s => s.curve[0]);
+  const values = series.flatMap(s => s.curve[1]).filter(v => v !== null);
+  const xMin = Math.min(...steps), xMax = Math.max(...steps);
+  let yMin = Math.min(...values), yMax = Math.max(...values);
+  if (yMin === yMax) { yMin -= 1; yMax += 1; }
+  const pad = (yMax - yMin) * 0.05;
+  yMin -= pad; yMax += pad;
+  const x = s => margin.left + (s - xMin) / (xMax - xMin || 1) * (width - margin.left - margin.right);
+  const y = v => margin.top + (yMax - v) / (yMax - yMin) * (height - margin.top - margin.bottom);
+  const yAxis = niceTicks(yMin, yMax, 4);
+  const yTicks = yAxis.ticks.filter(t => t >= yMin && t <= yMax);
+  const xTicks = niceTicks(xMin, xMax, Math.max(2, Math.floor(width / 90))).ticks.filter(t => t >= xMin && t <= xMax);
+  const path = ([xs, ys]) => xs.map((s, i) => ys[i] === null ? "" : `${i && ys[i - 1] !== null ? "L" : "M"}${x(s).toFixed(1)},${y(ys[i]).toFixed(1)}`).join("");
+  box.insertAdjacentHTML("beforeend", `<svg viewBox="0 0 ${width} ${height}" role="img">
+    <g class="axis">
+      ${yTicks.map(t => `<line class="gridline" x1="${margin.left}" x2="${width - margin.right}" y1="${y(t)}" y2="${y(t)}"/><text x="${margin.left - 6}" y="${y(t) + 3}" text-anchor="end">${yAxis.label(t)}</text>`).join("")}
+      ${xTicks.map(t => `<text x="${x(t)}" y="${height - 4}" text-anchor="middle">${fmtSteps(t)}</text>`).join("")}
+    </g>
+    ${series.map(s => `<path class="series" d="${path(s.curve)}" style="stroke:${s.color}"/>`).join("")}
+    <g class="hover" style="display:none"><line class="crosshair" y1="${margin.top}" y2="${height - margin.bottom}"/>${series.map(s => `<circle class="hover-dot" r="4" style="fill:${s.color}"/>`).join("")}</g>
+    <rect x="${margin.left}" y="0" width="${width - margin.left - margin.right}" height="${height}" fill="transparent"/>
+  </svg>`);
+  const svg = box.querySelector("svg");
+  const hover = svg.querySelector(".hover");
+  const tooltip = document.createElement("div");
+  tooltip.className = "tooltip";
+  tooltip.style.display = "none";
+  box.appendChild(tooltip);
+  svg.addEventListener("mousemove", event => {
+    const rect = svg.getBoundingClientRect();
+    const px = (event.clientX - rect.left) * width / rect.width;
+    const step = xMin + (px - margin.left) / (width - margin.left - margin.right) * (xMax - xMin);
+    const points = series.map(s => {
+      const xs = s.curve[0];
+      let lo = 0, hi = xs.length - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (xs[mid] < step) lo = mid + 1; else hi = mid; }
+      if (lo > 0 && step - xs[lo - 1] < xs[lo] - step) lo -= 1;
+      return { s, step: xs[lo], value: s.curve[1][lo] };
+    });
+    const shown = points[0].step;
+    hover.style.display = "";
+    hover.querySelector("line").setAttribute("x1", x(shown));
+    hover.querySelector("line").setAttribute("x2", x(shown));
+    hover.querySelectorAll("circle").forEach((dot, i) => {
+      const p = points[i];
+      dot.style.display = p.value === null ? "none" : "";
+      if (p.value !== null) { dot.setAttribute("cx", x(p.step)); dot.setAttribute("cy", y(p.value)); }
+    });
+    tooltip.innerHTML = `<div class="step">iteration ${shown.toLocaleString()}</div>${points.map(p =>
+      `<div class="item"><span class="swatch" style="background:${p.s.color}"></span><span>${escapeHtml(p.s.name)}</span><b>${fmtNumber(p.value)}</b></div>`).join("")}`;
+    tooltip.style.display = "";
+    const left = x(shown) / width * rect.width + 10;
+    tooltip.style.left = `${Math.min(left, box.clientWidth - tooltip.offsetWidth - 4)}px`;
+    tooltip.style.top = "34px";
+  });
+  svg.addEventListener("mouseleave", () => { hover.style.display = "none"; tooltip.style.display = "none"; });
+}
+
+function renderEvaluations(runs) {
+  const rows = runs.flatMap((run, i) => (evalsByRun[run.name] ?? [])
+    .flatMap(evaluation => evaluation.clips.map(clip => ({ run, color: SERIES_COLORS[i], evaluation, clip }))));
+  const container = document.getElementById("evals");
+  if (!rows.length) { container.innerHTML = '<span class="hint">No evaluations found for these runs.</span>'; return; }
+  const metrics = DATA.metrics.filter(m => rows.some(r => r.clip.metrics[m.path] !== null));
+  const best = {};
+  for (const m of metrics) {
+    for (const r of rows) {
+      const v = r.clip.metrics[m.path];
+      if (v === null) continue;
+      const key = `${m.path}|${r.clip.clip}`;
+      if (best[key] === undefined || (m.better === "high" ? v > best[key] : v < best[key])) best[key] = v;
+    }
+  }
+  const multiple = new Set(rows.map(r => r.run.id)).size > 1;
+  container.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th class="left">Run</th><th>Ckpt</th><th class="left">Evaluated</th><th class="left">Clip</th><th>Trials</th>
+      ${metrics.map(m => `<th title="${m.path}">${m.label} <span class="dir">${m.better === "high" ? "↑" : "↓"}</span></th>`).join("")}
+      <th class="left">Files</th></tr></thead>
+    <tbody>${rows.sort((a, b) => a.clip.clip.localeCompare(b.clip.clip) || b.evaluation.created.localeCompare(a.evaluation.created)).map(r => `<tr>
+      <td class="left"><span class="swatch" style="background:${r.color}"></span> ${escapeHtml(r.run.label)}</td>
+      <td>${fmtSteps(r.evaluation.checkpoint)}</td>
+      <td class="left">${fmtDate(r.evaluation.created)}</td>
+      <td class="left">${escapeHtml(r.clip.clip)}${r.clip.early_termination ? ' <span class="hint" title="early termination">ET</span>' : ""}</td>
+      <td>${r.clip.trials}</td>
+      ${metrics.map(m => {
+        const v = r.clip.metrics[m.path];
+        const isBest = multiple && v !== null && v === best[`${m.path}|${r.clip.clip}`];
+        return `<td class="${v === null ? "na" : isBest ? "best" : ""}">${m.path.includes("fraction") || m.path.includes("success_rate") ? (v === null ? "–" : `${(v * 100).toFixed(1)}%`) : fmtNumber(v)}</td>`;
+      }).join("")}
+      <td class="left">${r.clip.media.length ? `<details><summary>${r.clip.media.length} files</summary>${r.clip.media.map(file =>
+        `<a href="${r.clip.path}/${file}" target="_blank">${escapeHtml(file)}</a>`).join("")}</details>` : "–"}</td>
+    </tr>`).join("")}</tbody></table></div>
+    ${multiple ? '<p class="hint">Bold marks the best value per clip among the compared runs.</p>' : ""}`;
+}
+
+document.getElementById("runs-only").addEventListener("change", event => document.body.classList.toggle("runs-only", event.target.checked));
+let resizeTimer;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => state.selected && renderCharts(), 150); });
+
+document.getElementById("stats").textContent =
+  `${DATA.commits.filter(c => c.hash).length} commits · ${DATA.runs.length} runs · ${DATA.evaluations.length} evaluations · built ${fmtDate(DATA.built)}`;
+renderTimeline();
+select(DATA.runs.reduce((a, b) => a.started > b.started ? a : b).id);
+</script>
+</body>
+</html>

@@ -2,7 +2,8 @@
 
 The MJCF has simple collision capsules on the forearms and hands, which the
 rev 1.0 Isaac Sim asset lacks. The massless ``*_foot_contact_point`` bodies are
-dropped because the reference motions do not contain them. Isaac Lab's importer
+dropped because the reference motions do not contain them, and the ankle
+tendons because PhysX imports them with a negligible limit stiffness. Isaac Lab's importer
 nests every body under a grouping ``pelvis`` prim and adds an empty
 ``worldBody`` articulation root; both are undone so bodies sit at
 ``/g1_29dof/<body>`` like in the stock Isaac Lab G1.
@@ -44,6 +45,7 @@ def strip_mjcf(src, dst):
         for body in parent.findall("body"):
             if body.get("name").endswith("_foot_contact_point"):
                 parent.remove(body)
+    tree.getroot().remove(tree.find("tendon"))
     tree.write(dst)
 
 

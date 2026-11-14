@@ -61,3 +61,13 @@ xhost +local:docker
 docker compose   -f ~/humanoid-mrl/docker/docker-compose.yaml   -f ~/humanoid-mrl/docker/mujoco-motion.yaml   --profile sim   --profile sim-mujoco   up --build
 ```
 Change Clip Directory/Files as well as policy in ```~/humanoid-mrl/docker/mujoco-motion.yaml```.
+
+## Training dashboard
+
+```bash
+python3 scripts/dashboard/build.py
+```
+
+Open `logs/dashboard/index.html` in a browser. It shows the git history with training runs attached to
+their commits, TensorBoard curves and evaluation results. Curves are cached in `logs/dashboard/runs/`,
+so only the first build is slow.
