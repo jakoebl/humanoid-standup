@@ -91,6 +91,7 @@ class CommandsCfg:
     motion = mdp.MulticlipMotionCommandCfg(
         asset_name="robot",
         resampling_time_range=(1.0e9, 1.0e9),
+        sampling_mode="uniform",
         debug_vis=True,
         pose_range={
             "x": (-0.05, 0.05),
@@ -240,7 +241,7 @@ class RewardsCfg:
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=JOINT_NAMES, preserve_order=True)},
     )
     self_collisions = RewTerm(
-        func=mdp.self_collision_cost, weight=-10.0,
+        func=mdp.self_collision_cost, weight=-1.0,
         params={"sensor_names": ["self_contact_" + name for name in CONTACT_BODY_NAMES],
                 "force_threshold": 10.0},
     )
