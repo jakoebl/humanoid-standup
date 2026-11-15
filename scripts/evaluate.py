@@ -3,8 +3,10 @@
 
 --checkpoint: model to evaluate; task and clips are inferred from its path.
 Action clipping matches the run's params/env.yaml: on if it trained clipped, off otherwise.
---criterion: standing_up, foot_motion, lifted_foot, jitteriness, actuator_effort, joints, worst_rewards or standing_push.
+--criterion: standing_up, foot_motion, lifted_foot, jitteriness, actuator_effort, joints, worst_rewards,
+random_attempts or standing_push.
 Omit to run all unpushed evaluations; standing_push is a separate disturbed rollout.
+random_attempts records ten randomly chosen trials and requires --record.
 --task: optional task override for relocated checkpoints.
 --num-envs: parallel trials per clip (default: 1000).
 --clip-index: evaluate one clip; default is every training clip.
@@ -163,7 +165,7 @@ def run_clip(env, policy, clip_index, evaluations, num_frames=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument("--criterion", choices=("standing_up", "foot_motion", "lifted_foot", "jitteriness", "actuator_effort", "joints", "worst_rewards", "standing_push"))
+    parser.add_argument("--criterion", choices=("standing_up", "foot_motion", "lifted_foot", "jitteriness", "actuator_effort", "joints", "worst_rewards", "random_attempts", "standing_push"))
     parser.add_argument("--task")
     parser.add_argument("--num-envs", type=int, default=1000)
     parser.add_argument("--clip-index", type=int)
@@ -184,6 +186,8 @@ def main():
         parser.error("--foot-movement-threshold must be finite and nonnegative.")
     if not math.isfinite(args.foot_lift_threshold) or args.foot_lift_threshold < 0:
         parser.error("--foot-lift-threshold must be finite and nonnegative.")
+    if args.criterion == "random_attempts" and not args.record:
+        parser.error("--criterion random_attempts requires --record.")
     try:
         task = args.task or infer_task(checkpoint)
         clips = resolve_clips(checkpoint, Path(__file__).resolve().parents[1], task, args.clips_dir)
@@ -208,7 +212,7 @@ def main():
     from isaaclab.app import AppLauncher
 
     print("[evaluate] Starting simulator...", flush=True)
-    record_video = args.record and args.criterion in (None, "worst_rewards", "jitteriness", "foot_motion")
+    record_video = args.record and args.criterion in (None, "worst_rewards", "jitteriness", "foot_motion", "random_attempts")
     app = AppLauncher(headless=True, device=args.device, enable_cameras=record_video).app
     print("[evaluate] Simulator started; loading evaluation modules...", flush=True)
     env = None
@@ -227,6 +231,7 @@ def main():
         from evaluate.jitteriness import Jitteriness
         from evaluate.joints import JointPlots
         from evaluate.lifted_foot import LiftedFoot
+        from evaluate.random_attempts import RandomAttempts
         from evaluate.foot_motion import StandingFootMotion
         from evaluate.rewards import RewardEvaluation, TrajectoryCache, render_attempts
         from evaluate.standing_up import StandingUp
@@ -298,6 +303,8 @@ def main():
                     evaluations.append(JointPlots(raw.step_dt))
                 if args.criterion in (None, "standing_up"):
                     evaluations.append(StandingUp(raw.num_envs, raw.step_dt))
+                if record_video and args.criterion in (None, "random_attempts"):
+                    evaluations.append(RandomAttempts(raw.num_envs, args.seed))
                 if args.criterion == "standing_push":
                     push_evaluation = StandingPush(raw.num_envs, raw.step_dt, args.foot_movement_threshold)
                     evaluations.append(push_evaluation)
@@ -328,7 +335,7 @@ def main():
                     evaluation.save(destination)
                 for evaluation in evaluations:
                     criterion = {"jitteriness": "jitteriness", "standing_foot_motion": "foot_motion",
-                                 "standing_push": "standing_push"}.get(evaluation.name)
+                                 "standing_push": "standing_push", "random_attempts": "random_attempts"}.get(evaluation.name)
                     if record_video and criterion is not None:
                         render_attempts(raw, cache.states, evaluation.video_attempts(), destination, criterion=criterion)
         print(f"Evaluation results: {output}", flush=True)
