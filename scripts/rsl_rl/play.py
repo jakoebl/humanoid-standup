@@ -370,6 +370,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if IS_TRACKING_TASK:
         env_cfg.observations.policy.enable_corruption = False
         env_cfg.events.push_robot = None
+        env_cfg.events.assist_force = None
+        env_cfg.curriculum.assist_force = None
         env_cfg.commands.motion.sampling_mode = "start"
         env_cfg.commands.motion.pose_range = {}
         env_cfg.commands.motion.velocity_range = {}

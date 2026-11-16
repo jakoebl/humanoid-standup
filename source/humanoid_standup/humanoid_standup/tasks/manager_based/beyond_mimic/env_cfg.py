@@ -6,6 +6,7 @@ from dataclasses import MISSING
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -196,6 +197,15 @@ class EventCfg:
     )
 
 
+    assist_force = EventTerm(
+        func=mdp.vertical_assist_force,
+        mode="interval",
+        interval_range_s=(0.0, 0.0),
+        is_global_time=True,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names="torso_link"), "scale": 0.5},
+    )
+
+
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
@@ -275,8 +285,7 @@ class TerminationsCfg:
 @configclass
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
-
-    pass
+    assist_force = CurrTerm(func=mdp.AssistForceCurriculum)
 
 
 ##
@@ -334,6 +343,8 @@ class BeyondMimicPlayEnvCfg(BeyondMimicEnvCfg):
         self.episode_length_s = 1e9
         self.observations.policy.enable_corruption = False
         self.events.push_robot = None
+        self.events.assist_force = None
+        self.curriculum.assist_force = None
         self.commands.motion.pose_range = {}
         self.commands.motion.velocity_range = {}
         self.commands.motion.joint_position_range = (0.0, 0.0)

@@ -72,10 +72,12 @@ def effective_event_parameters(events):
 
 
 def configure_evaluation_randomization(cfg, motion_defaults):
-    """Keep training observation/pose/joint noise, without periodic velocity pushes."""
+    """Keep training observation/pose/joint noise, without periodic velocity pushes or assist force."""
     from copy import deepcopy
 
     cfg.events.push_robot = None
+    cfg.events.assist_force = None
+    cfg.curriculum.assist_force = None
     cfg.observations.policy.enable_corruption = True
     cfg.commands.motion.pose_range = deepcopy(motion_defaults.pose_range)
     cfg.commands.motion.joint_position_range = motion_defaults.joint_position_range
