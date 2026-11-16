@@ -259,6 +259,7 @@ def main():
             if not name.startswith("_"):
                 setattr(env_cfg.terminations, name, None)
         env_cfg.viewer.resolution = (1280, 720)
+        env_cfg.sim.render.rendering_mode = "performance"
         agent_cfg = load_cfg_from_registry(task, "rsl_rl_cfg_entry_point")
         rsl_version = installed_version("rsl-rl-lib")
         agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, rsl_version)

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -68,24 +68,35 @@ main { display: grid; grid-template-columns: minmax(340px, 460px) 1fr; height: c
   #detail { padding: 16px; }
 }
 
-.row { display: grid; grid-template-columns: auto 1fr; padding: 0 12px 0 8px; }
-.row.graph-only { height: 14px; overflow: hidden; }
-.graph { position: relative; min-width: calc(var(--lanes) * 1ch + 8px); color: var(--text-muted); }
-.graph pre { position: absolute; inset: 0; margin: 0; line-height: 14px; padding-top: 6px; overflow: hidden; }
-.row.graph-only .graph pre { padding-top: 0; }
-.graph .dot { color: var(--text-primary); font-weight: 700; }
-.graph .dot.has-runs { color: var(--accent); }
-.commit-body { padding: 4px 0 6px; min-width: 0; }
-.commit-line { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
-.commit-line code { color: var(--text-muted); }
+.row { display: grid; grid-template-columns: auto 1fr; gap: 0 4px; padding: 0 12px 0 6px; }
+.row:hover { background: var(--surface-2); }
+.graph { position: relative; }
+.graph svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.graph line, .graph path { fill: none; stroke-width: 2; stroke-linecap: round; }
+.graph .node { stroke: var(--surface-1); stroke-width: 2; }
+.graph .node.head { fill: var(--surface-1); stroke-width: 2.5; }
+.graph .halo { fill: none; stroke-width: 1.5; }
+.row.open { background: var(--surface-2); }
+.commit-body { min-width: 0; }
+.commit-line { display: flex; gap: 6px; align-items: center; height: 22px; min-width: 0; cursor: pointer; }
 .commit-line .subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row.no-runs .subject { color: var(--text-secondary); }
+.run-count { margin-left: auto; flex-shrink: 0; font-size: 10px; color: var(--text-muted); }
+.commit-details { display: none; padding: 2px 0 8px; }
+.row.open .commit-details { display: block; }
 .commit-meta { color: var(--text-muted); font-size: 11px; }
+.commit-meta code { color: var(--text-secondary); }
+.refs { display: flex; gap: 4px; flex-shrink: 0; }
 .ref {
-  font-size: 10px; padding: 0 5px; border-radius: 8px; white-space: nowrap;
-  border: 1px solid var(--border); color: var(--text-secondary);
+  font-size: 10px; font-weight: 600; padding: 0 6px; border-radius: 4px; white-space: nowrap; line-height: 16px;
+  border: 1px solid var(--lane); color: var(--lane); background: color-mix(in srgb, var(--lane) 14%, transparent);
+  display: inline-flex; align-items: center; gap: 3px;
 }
-.ref.head { border-color: var(--accent); color: var(--accent); }
-body.runs-only .row.graph-only, body.runs-only .row.no-runs { display: none; }
+.ref svg { width: 11px; height: 11px; fill: currentColor; }
+.ref.remote { border-style: dashed; background: none; font-weight: 400; }
+.ref.tag { border-radius: 8px; }
+.ref.head { background: var(--lane); color: var(--surface-1); }
+body.runs-only .row.no-runs { display: none; }
 body.runs-only .graph { display: none; }
 body.runs-only .row { grid-template-columns: 1fr; padding-left: 12px; }
 
@@ -196,7 +207,7 @@ const DEFAULT_TAGS = [
 ];
 
 const runsById = Object.fromEntries(DATA.runs.map(run => [run.id, run]));
-const commitHashes = new Set(DATA.commits.map(c => c.hash).filter(Boolean));
+const commitHashes = new Set(DATA.commits.map(c => c.hash));
 const runsByCommit = {};
 for (const run of DATA.runs) {
   if (commitHashes.has(run.commit)) (runsByCommit[run.commit] ??= []).push(run);
@@ -244,29 +255,87 @@ function runCard(run) {
   </div>`;
 }
 
-function graphHtml(graph, hasRuns) {
-  return escapeHtml(graph).replace("*", `<span class="dot${hasRuns ? " has-runs" : ""}">●</span>`);
+/* Lane layout as in VS Code's graph: every lane waits for one commit hash. A commit takes the
+   lane that waits for it (or a free one), lanes also waiting for it curve into its node, and its
+   parents take over its lane (first parent) or join/claim other lanes (merge parents). */
+const LANE = 14, NODE_Y = 11, RADIUS = 6;
+
+function graphLayout(commits) {
+  const lanes = [], colors = [];
+  let nextColor = 0;
+  const claim = hash => {
+    const i = lanes.includes(null) ? lanes.indexOf(null) : lanes.length;
+    lanes[i] = hash;
+    colors[i] = SERIES_COLORS[nextColor++ % SERIES_COLORS.length];
+    return i;
+  };
+  const rows = commits.map(commit => {
+    const parents = commit.parents.split(" ").filter(Boolean);
+    const continues = lanes.includes(commit.hash);
+    const lane = continues ? lanes.indexOf(commit.hash) : claim(commit.hash);
+    const through = [], incoming = [], outgoing = [];
+    lanes.forEach((hash, i) => {
+      if (hash === null || i === lane) return;
+      if (hash === commit.hash) { incoming.push([i, colors[i]]); lanes[i] = null; }
+      else through.push([i, colors[i]]);
+    });
+    const color = colors[lane];
+    lanes[lane] = parents[0] ?? null;
+    for (const parent of parents.slice(1)) {
+      const target = lanes.includes(parent) ? lanes.indexOf(parent) : claim(parent);
+      outgoing.push([target, colors[target]]);
+    }
+    return { lane, color, continues, ends: !parents.length, through, incoming, outgoing };
+  });
+  return { rows, width: lanes.length };
 }
 
-function continuation(graph, lines) {
-  const next = graph.replace(/\*/g, "|").replace(/[^|]/g, " ");
-  return Array(lines).fill(escapeHtml(next)).join("\n");
+function graphSvg(g, width, hasRuns, isHead) {
+  const x = i => LANE / 2 + 1 + i * LANE;
+  const xn = x(g.lane);
+  const style = color => `style="stroke:${color}"`;
+  const corner = to => xn + Math.sign(x(to) - xn) * (Math.abs(x(to) - xn) - RADIUS);
+  const parts = [
+    ...g.through.map(([i, c]) => `<line x1="${x(i)}" x2="${x(i)}" y1="0" y2="100%" ${style(c)}/>`),
+    ...g.incoming.map(([i, c]) => `<path d="M${x(i)},0 V${NODE_Y - RADIUS} Q${x(i)},${NODE_Y} ${corner(i)},${NODE_Y} H${xn}" ${style(c)}/>`),
+    ...g.outgoing.flatMap(([i, c]) => [
+      `<path d="M${xn},${NODE_Y} H${corner(i)} Q${x(i)},${NODE_Y} ${x(i)},${NODE_Y + RADIUS}" ${style(c)}/>`,
+      `<line x1="${x(i)}" x2="${x(i)}" y1="${NODE_Y + RADIUS}" y2="100%" ${style(c)}/>`,
+    ]),
+    g.continues ? `<line x1="${xn}" x2="${xn}" y1="0" y2="${NODE_Y}" ${style(g.color)}/>` : "",
+    g.ends ? "" : `<line x1="${xn}" x2="${xn}" y1="${NODE_Y}" y2="100%" ${style(g.color)}/>`,
+    hasRuns ? `<circle class="halo" cx="${xn}" cy="${NODE_Y}" r="7.5" ${style(g.color)}/>` : "",
+    `<circle class="node${isHead ? " head" : ""}" cx="${xn}" cy="${NODE_Y}" r="4.5" style="${isHead ? "stroke" : "fill"}:${g.color}"/>`,
+  ];
+  return `<div class="graph" style="width:${width * LANE + 2}px"><svg>${parts.join("")}</svg></div>`;
+}
+
+const CLOUD = '<svg viewBox="0 0 16 16"><path d="M4.5 13a3.5 3.5 0 0 1-.4-7A5 5 0 0 1 13.6 7 3 3 0 0 1 12.5 13z"/></svg>';
+
+/* A remote branch on the same commit as its local branch is folded into the local pill as a cloud icon. */
+function refsHtml(refs, color) {
+  const names = refs.map(ref => ref.replace("HEAD -> ", ""));
+  return names.filter(name => !(name.startsWith("origin/") && names.includes(name.slice(7)))).map(name => {
+    const kind = refs.includes(`HEAD -> ${name}`) || name === "HEAD" ? "head" : name.startsWith("tag: ") ? "tag" : name.startsWith("origin/") ? "remote" : "branch";
+    const synced = names.includes(`origin/${name}`);
+    return `<span class="ref ${kind}" style="--lane:${color}"${synced ? ` title="in sync with origin/${escapeHtml(name)}"` : ""}>${escapeHtml(name.replace("tag: ", ""))}${synced ? CLOUD : ""}</span>`;
+  }).join("");
 }
 
 function renderTimeline() {
-  const lanes = Math.max(...DATA.commits.map(c => c.graph.length));
-  const rows = DATA.commits.map(commit => {
-    const graph = `<div class="graph" style="--lanes:${lanes}"><pre>`;
-    if (!commit.hash) return `<div class="row graph-only">${graph}${escapeHtml(commit.graph)}</pre></div><div></div></div>`;
+  const layout = graphLayout(DATA.commits);
+  const rows = DATA.commits.map((commit, index) => {
+    const g = layout.rows[index];
     const runs = (runsByCommit[commit.hash] ?? []).sort((a, b) => b.started.localeCompare(a.started));
-    const refs = commit.refs.split(", ").filter(Boolean).map(ref =>
-      `<span class="ref${ref.startsWith("HEAD") ? " head" : ""}">${escapeHtml(ref.replace("HEAD -> ", "HEAD → "))}</span>`).join("");
+    const refs = commit.refs.split(", ").filter(Boolean);
     return `<div class="row${runs.length ? "" : " no-runs"}">
-      ${graph}${graphHtml(commit.graph, runs.length)}\n${continuation(commit.graph, 60)}</pre></div>
+      ${graphSvg(g, layout.width, runs.length, refs.some(ref => ref.startsWith("HEAD")))}
       <div class="commit-body">
-        <div class="commit-line"><code>${commit.short}</code><span class="subject" title="${escapeHtml(commit.subject)}">${escapeHtml(commit.subject)}</span>${refs}</div>
-        <div class="commit-meta">${fmtDate(commit.date)}</div>
-        ${runs.map(runCard).join("")}
+        <div class="commit-line"><span class="subject" title="${escapeHtml(commit.subject)}">${escapeHtml(commit.subject)}</span>${refs.length ? `<span class="refs">${refsHtml(refs, g.color)}</span>` : ""}${runs.length ? `<span class="run-count">${runs.length} run${runs.length > 1 ? "s" : ""}</span>` : ""}</div>
+        <div class="commit-details">
+          <div class="commit-meta"><code>${commit.short}</code> · ${fmtDate(commit.date)}</div>
+          ${runs.map(runCard).join("")}
+        </div>
       </div>
     </div>`;
   });
@@ -281,6 +350,8 @@ function renderTimeline() {
 }
 
 document.getElementById("timeline").addEventListener("click", event => {
+  const line = event.target.closest(".commit-line");
+  if (line) return line.closest(".row").classList.toggle("open");
   const card = event.target.closest(".run");
   if (!card) return;
   const id = card.dataset.run;
@@ -298,6 +369,7 @@ function syncTimeline() {
 
 function select(id) {
   state.selected = id;
+  document.querySelector(`.run[data-run="${id}"]`).closest(".row")?.classList.add("open");
   state.compared = state.compared.filter(other => other !== id);
   renderDetail();
 }
@@ -522,7 +594,7 @@ let resizeTimer;
 window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => state.selected && renderCharts(), 150); });
 
 document.getElementById("stats").textContent =
-  `${DATA.commits.filter(c => c.hash).length} commits · ${DATA.runs.length} runs · ${DATA.evaluations.length} evaluations · built ${fmtDate(DATA.built)}`;
+  `${DATA.commits.length} commits · ${DATA.runs.length} runs · ${DATA.evaluations.length} evaluations · built ${fmtDate(DATA.built)}`;
 renderTimeline();
 select(DATA.runs.reduce((a, b) => a.started > b.started ? a : b).id);
 </script>

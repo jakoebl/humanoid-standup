@@ -40,16 +40,12 @@ EVAL_METRICS = [
 
 
 def git_graph():
-    fields = ["hash", "short", "date", "refs", "subject"]
+    fields = ["hash", "short", "parents", "date", "refs", "subject"]
     output = subprocess.run(
-        ["git", "log", "--branches", "--remotes", "--tags", "--graph", "--date-order", "--format=%x1f%H%x1f%h%x1f%aI%x1f%D%x1f%s"],
+        ["git", "log", "--branches", "--remotes", "--tags", "--date-order", "--format=%H%x1f%h%x1f%P%x1f%aI%x1f%D%x1f%s"],
         cwd=ROOT, capture_output=True, text=True, check=True,
     ).stdout
-    rows = []
-    for line in output.splitlines():
-        graph, *values = line.split("\x1f")
-        rows.append({"graph": graph.rstrip(), **dict(zip(fields, values))})
-    return rows
+    return [dict(zip(fields, line.split("\x1f"))) for line in output.splitlines()]
 
 
 def git_info(run_dir):
