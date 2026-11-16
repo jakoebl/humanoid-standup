@@ -234,7 +234,7 @@ class RewardsCfg:
 
     joint_limit = RewTerm(
         func=mdp.joint_pos_limits,
-        weight=-1.0,
+        weight=-10.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
     
