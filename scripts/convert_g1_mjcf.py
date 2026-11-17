@@ -1,9 +1,10 @@
 """Convert the humanoid-mrl G1 MJCF into the USD used by the BeyondMimic task.
 
 The MJCF has simple collision capsules on the forearms and hands, which the
-rev 1.0 Isaac Sim asset lacks. The massless ``*_foot_contact_point`` bodies are
-dropped because the reference motions do not contain them, and the ankle
-tendons because PhysX imports them with a negligible limit stiffness. Isaac Lab's importer
+rev 1.0 Isaac Sim asset lacks. The foot capsules are replaced by the four corner
+spheres of the Isaac Sim asset's foot. The massless ``*_foot_contact_point`` bodies are
+dropped because the reference motions do not contain them, the foot-floor
+contact pairs with the capsules, and the ankle tendons because PhysX imports them with a negligible limit stiffness. Isaac Lab's importer
 nests every body under a grouping ``pelvis`` prim and adds an empty
 ``worldBody`` articulation root; both are undone so bodies sit at
 ``/g1_29dof/<body>`` like in the stock Isaac Lab G1.
@@ -34,6 +35,7 @@ from pxr import Sdf  # noqa: E402
 ROOT = Sdf.Path("/g1_29dof")
 GROUP = ROOT.AppendChild("pelvis")
 TMP = ROOT.AppendChild("_group")
+FOOT_POINTS = ["-0.05 0.025 -0.03", "-0.05 -0.025 -0.03", "0.12 0.03 -0.03", "0.12 -0.03 -0.03"]
 
 
 def strip_mjcf(src, dst):
@@ -45,6 +47,13 @@ def strip_mjcf(src, dst):
         for body in parent.findall("body"):
             if body.get("name").endswith("_foot_contact_point"):
                 parent.remove(body)
+    for side in ("left", "right"):
+        foot = tree.find(f".//body[@name='{side}_ankle_roll_link']")
+        for geom in foot.findall("geom[@class='collision']"):
+            foot.remove(geom)
+        for i, pos in enumerate(FOOT_POINTS, 1):
+            ET.SubElement(foot, "geom", {"name": f"{side}_foot{i}_collision", "class": "collision", "type": "sphere", "size": "0.005", "pos": pos})
+    tree.getroot().remove(tree.find("contact"))
     tree.getroot().remove(tree.find("tendon"))
     tree.write(dst)
 
