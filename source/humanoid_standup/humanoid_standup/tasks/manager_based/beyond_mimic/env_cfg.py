@@ -285,7 +285,10 @@ class TerminationsCfg:
 @configclass
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
-    assist_force = CurrTerm(func=mdp.AssistForceCurriculum)
+    assist_force = CurrTerm(
+        func=mdp.AssistForceCurriculum,
+        params={"step": 0.01, "timeout_threshold": 0.90},
+    )
 
 
 ##

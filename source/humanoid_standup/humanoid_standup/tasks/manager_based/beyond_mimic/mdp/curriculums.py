@@ -17,8 +17,8 @@ class AssistForceCurriculum(ManagerTermBase):
         # Time of last update in env steps
         self._last_update = 0
 
-    def __call__(self, env, env_ids, term_name="assist_force", step=0.05, min_scale=0.0,
-                 timeout_threshold=0.8, update_interval=1200):
+    def __call__(self, env, env_ids, step, timeout_threshold, term_name="assist_force", min_scale=0.0,
+                 update_interval=1200):
         term_cfg = env.event_manager.get_term_cfg(term_name)
 
         # Skip the initial reset of all environments at step 0
