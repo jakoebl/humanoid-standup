@@ -1,6 +1,7 @@
 """Independent per-environment clip selection with per-clip adaptive sampling."""
 
 import math
+from pathlib import Path
 
 import torch
 from isaaclab.utils import configclass
@@ -45,6 +46,19 @@ class MulticlipMotionCommand(MotionCommand):
         self.failed_bins = [torch.zeros(count, device=self.device) for count in self.clip_bin_counts]
         self.pending_failures = [torch.zeros_like(counts) for counts in self.failed_bins]
         self.metrics["clip_id"] = torch.zeros(self.num_envs, device=self.device)
+        self.clip_names = [Path(path).stem for path in self.motion.paths]
+
+    def reset(self, env_ids=None):
+        clip_ids = self.clip_ids[env_ids]
+        # motion_end is the only time-out term, so a time-out is a successfully finished clip.
+        values = {"success_rate": self._env.termination_manager.time_outs[env_ids].float()}
+        values |= {name: metric[env_ids] for name, metric in self.metrics.items() if name.startswith("error_")}
+        # Written to the log directly (returned metrics get a Metrics/motion/ prefix) so each clip gets its own
+        # TensorBoard section. Per-episode values, not means: the logger averages over episodes, empty clips add nothing.
+        for clip_id, clip in enumerate(self.clip_names):
+            for name, value in values.items():
+                self._env.extras["log"][f"Metrics_{clip}/{name}"] = value[clip_ids == clip_id]
+        return super().reset(env_ids)
 
     @property
     def local_frames(self):

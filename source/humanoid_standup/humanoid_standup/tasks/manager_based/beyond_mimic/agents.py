@@ -1,6 +1,7 @@
 from isaaclab.utils import configclass
-from isaaclab_rl.rsl_rl import RslRlMLPModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
+from isaaclab_rl.rsl_rl import RslRlMLPModelCfg, RslRlOnPolicyRunnerCfg
 from .critic import MultiCriticCfg
+from .multiclip_ppo import MulticlipPPOCfg
 
 
 @configclass
@@ -23,7 +24,7 @@ class BeyondMimicPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         activation="elu",
         obs_normalization=True,
     )
-    algorithm = RslRlPpoAlgorithmCfg(
+    algorithm = MulticlipPPOCfg(
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
