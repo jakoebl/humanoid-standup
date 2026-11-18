@@ -263,7 +263,7 @@ class RewardsCfg:
 class TerminationsCfg:
     """Termination terms for the MDP."""
 
-    time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    motion_end = DoneTerm(func=mdp.motion_end, time_out=True)
     anchor_pos = DoneTerm(
         func=mdp.bad_anchor_pos_z_only,
         params={"threshold": 0.25},

@@ -258,7 +258,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print("[INFO] Each environment samples a clip uniformly on reset.")
     print("=" * 80, flush=True)
     with latest_iteration(runner):
-        runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=IS_TRACKING_TASK)
+        runner.learn(num_learning_iterations=agent_cfg.max_iterations)
 
     print(f"Training time: {round(time.time() - start_time, 2)} seconds")
 

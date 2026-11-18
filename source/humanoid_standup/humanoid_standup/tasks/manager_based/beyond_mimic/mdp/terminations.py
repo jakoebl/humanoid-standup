@@ -13,6 +13,7 @@ from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 
 from .commands import MotionCommand
+from .library_commands import MulticlipMotionCommand
 from .rewards import _get_body_indexes
 
 
@@ -57,3 +58,9 @@ def bad_motion_body_pos_z_only(
     body_indexes = _get_body_indexes(command, body_names)
     error = torch.abs(command.body_pos_relative_w[:, body_indexes, -1] - command.robot_body_pos_w[:, body_indexes, -1])
     return torch.any(error > threshold, dim=-1)
+
+
+def motion_end(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """End the episode on the last reference frame so a clip never changes mid-episode."""
+    command: MulticlipMotionCommand = env.command_manager.get_term("motion")
+    return command.local_frames >= command.motion.lengths[command.clip_ids] - 1
