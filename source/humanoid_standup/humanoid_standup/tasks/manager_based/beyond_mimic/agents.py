@@ -1,5 +1,6 @@
 from isaaclab.utils import configclass
 from isaaclab_rl.rsl_rl import RslRlMLPModelCfg, RslRlOnPolicyRunnerCfg, RslRlPpoAlgorithmCfg
+from .critic import MultiCriticCfg
 
 
 @configclass
@@ -17,7 +18,7 @@ class BeyondMimicPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         obs_normalization=True,
         distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=1.0),
     )
-    critic = RslRlMLPModelCfg(
+    critic = MultiCriticCfg(
         hidden_dims=[1024, 512, 256],
         activation="elu",
         obs_normalization=True,

@@ -164,11 +164,15 @@ class ObservationsCfg:
         robot_joint_pos = ObsTerm(func=mdp.selected_joint_pos_rel)
         robot_joint_vel = ObsTerm(func=mdp.selected_joint_vel_rel)
         robot_actions = ObsTerm(func=mdp.last_action)
+
+    @configclass
+    class ClipCfg(ObsGroup):
         motion_clip = ObsTerm(func=mdp.motion_clip_one_hot)
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
     critic: PrivilegedCfg = PrivilegedCfg()
+    clip: ClipCfg = ClipCfg()
 
 
 @configclass
