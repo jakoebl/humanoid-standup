@@ -50,15 +50,16 @@ class MulticlipMotionCommand(MotionCommand):
 
     def reset(self, env_ids=None):
         clip_ids = self.clip_ids[env_ids]
-        # motion_end is the only time-out term, so a time-out is a successfully finished clip.
-        values = {"success_rate": self._env.termination_manager.time_outs[env_ids].float()}
-        values |= {name: metric[env_ids] for name, metric in self.metrics.items() if name.startswith("error_")}
+
+        manager = self._env.termination_manager
+        terminations = {f"termination_{name}": manager.get_term(name)[env_ids].float() for name in manager.active_terms}
+        errors = {name: metric[env_ids] for name, metric in self.metrics.items() if name.startswith("error_")}
         # Written to the log directly (returned metrics get a Metrics/motion/ prefix) so each clip gets its own
         # TensorBoard section. Per-episode values, not means: the logger averages over episodes, empty clips add nothing.
         for clip_id, clip in enumerate(self.clip_names):
-            for name, value in values.items():
+            for name, value in (terminations | errors).items():
                 self._env.extras["log"][f"Metrics_{clip}/{name}"] = value[clip_ids == clip_id]
-        return super().reset(env_ids)
+        return super().reset(env_ids) | errors
 
     @property
     def local_frames(self):

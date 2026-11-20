@@ -272,18 +272,6 @@ class TerminationsCfg:
         func=mdp.bad_anchor_ori,
         params={"asset_cfg": SceneEntityCfg("robot"), "threshold": 0.8},
     )
-    ee_body_pos = DoneTerm(
-        func=mdp.bad_motion_body_pos_z_only,
-        params={
-            "threshold": 1.0,
-            "body_names": [
-                "left_ankle_roll_link",
-                "right_ankle_roll_link",
-                "left_wrist_yaw_link",
-                "right_wrist_yaw_link",
-            ],
-        },
-    )
 
 
 @configclass
