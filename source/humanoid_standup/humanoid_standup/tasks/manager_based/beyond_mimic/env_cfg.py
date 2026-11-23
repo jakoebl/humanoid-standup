@@ -25,7 +25,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from . import mdp
 from .constants import ACTION_SCALE, BODY_NAMES, CONTACT_BODY_NAMES, JOINT_NAMES, JOINT_POSITION_LIMITS
-from .robot import robot_cfg, spawn_without_leg_ground_contact
+from .robot import robot_cfg
 from pathlib import Path
 
 ##
@@ -77,9 +77,6 @@ class MySceneCfg(InteractiveSceneCfg):
         prim_path="/World/skyLight",
         spawn=sim_utils.DomeLightCfg(color=(0.13, 0.13, 0.13), intensity=1000.0),
     )
-
-    def __post_init__(self):
-        self.robot.spawn.func = spawn_without_leg_ground_contact
 
 
 
