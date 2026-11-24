@@ -1,8 +1,8 @@
 """Convert the humanoid-mrl G1 MJCF into the USD used by the BeyondMimic task.
 
-The MJCF has simple collision capsules on the forearms and hands, which the
-rev 1.0 Isaac Sim asset lacks. The foot capsules are replaced by the four corner
-spheres of the Isaac Sim asset's foot. The massless ``*_foot_contact_point`` bodies are
+The MJCF collides each link through the convex hull of its Unitree mesh, so the
+thighs clear the pelvis as on the real robot. The foot capsules are replaced by the
+four corner spheres of the Isaac Sim asset's foot. The massless ``*_foot_contact_point`` bodies are
 dropped because the reference motions do not contain them, the foot-floor
 contact pairs with the capsules, and the ankle tendons because PhysX imports them with a negligible limit stiffness. Isaac Lab's importer
 nests every body under a grouping ``pelvis`` prim and adds an empty

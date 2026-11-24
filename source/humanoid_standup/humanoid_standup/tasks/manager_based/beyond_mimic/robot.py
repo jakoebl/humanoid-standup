@@ -11,7 +11,7 @@ from .constants import MOTOR_GROUPS, NATURAL_FREQ
 
 def robot_cfg():
     cfg = G1_29DOF_CFG.copy()
-    # Converted by scripts/convert_g1_mjcf.py; has collision capsules on the forearms and fixed hands.
+    # Converted by scripts/convert_g1_mjcf.py; per-link convex mesh colliders, four sphere contacts per foot.
     cfg.spawn.usd_path = str(Path(__file__).parent / "assets" / "g1_29dof.usd")
     cfg.spawn.activate_contact_sensors = True
     cfg.spawn.articulation_props.enabled_self_collisions = True
