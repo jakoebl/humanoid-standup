@@ -7,7 +7,7 @@ from pathlib import Path
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--task", default="BeyondMimic", choices=("BeyondMimic", "Mimic-Multiclip"))
+parser.add_argument("--task", default="BeyondMimic", choices=("BeyondMimic",))
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 app = AppLauncher(args).app
@@ -20,7 +20,7 @@ import humanoid_standup.tasks  # noqa: F401
 
 
 def main():
-    source = Path(__file__).resolve().parents[1] / "data/beyondmimic/stand_up_lying_V2.npz"
+    source = Path(__file__).resolve().parents[1] / "data/beyondmimic/back.npz"
     with tempfile.TemporaryDirectory() as directory:
         with np.load(source, allow_pickle=False) as original:
             for index, length in enumerate((80, 130)):

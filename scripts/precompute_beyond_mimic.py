@@ -21,8 +21,8 @@ def main():
 
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input", type=Path, nargs="?", default=root / "data/unprocessed/stand_up_lying_V2.csv")
-    parser.add_argument("output", type=Path, nargs="?", default=root / "data/beyondmimic/stand_up_lying_V2.npz")
+    parser.add_argument("input", type=Path, nargs="?", default=root / "data/unprocessed/stand_up_back_25_446_settled.csv")
+    parser.add_argument("output", type=Path, nargs="?", default=root / "data/beyondmimic/back.npz")
     parser.add_argument("--input-fps", type=float, default=120)
     parser.add_argument("--output-fps", type=float, default=50)
     AppLauncher.add_app_launcher_args(parser)

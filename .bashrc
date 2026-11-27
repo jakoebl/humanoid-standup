@@ -23,11 +23,11 @@ play() {
     local pattern="$1"
     shift
 
-    local root="/workspace/humanoid_standup/logs"
-    local run checkpoint task
+    local root="/workspace/humanoid_standup/logs/rsl_rl/beyond_mimic"
+    local run checkpoint
 
     run=$(
-        find "$root" -mindepth 0 -maxdepth 3 -type d -printf '%P\n' |
+        find "$root" -mindepth 1 -maxdepth 1 -type d -printf '%P\n' |
             grep -E -- "$pattern" |
             LC_ALL=C sort |
             tail -n 1
@@ -37,15 +37,6 @@ play() {
         echo "No run matches: $pattern" >&2
         return 1
     fi
-
-    case "$run" in
-        rsl_rl/beyond_mimic/*) task="BeyondMimic-Play" ;;
-        rsl_rl/mimic_multiclip/*) task="Mimic-Multiclip-Play" ;;
-        *)
-            echo "Cannot determine task for log directory: $root/$run" >&2
-            return 1
-            ;;
-    esac
 
     checkpoint=$(
         find "$root/$run" -maxdepth 1 -type f -name 'model_*.pt' -printf '%f\n' |
@@ -59,19 +50,10 @@ play() {
         return 1
     fi
 
-    echo "Playing ($task): $root/$run/$checkpoint"
+    echo "Playing: $root/$run/$checkpoint"
     isaaclab -p /workspace/humanoid_standup/scripts/rsl_rl/play.py \
-        --task "$task" \
+        --task BeyondMimic-Play \
         --num_envs 1 \
         --checkpoint "$root/$run/$checkpoint" \
         "$@"
-}
-
-# Record each clip from frame 0 into vids/<checkpoint-run-directory>/.
-record() {
-    if [ "$#" -eq 0 ]; then
-        echo 'Usage: record_checkpoint CHECKPOINT_PATH [--clips-dir DIRECTORY]'
-        return 1
-    fi
-    isaaclab -p /workspace/humanoid_standup/scripts/record_checkpoint.py "$@"
 }
