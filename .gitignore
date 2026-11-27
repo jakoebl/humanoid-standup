@@ -5,6 +5,7 @@ evaluation
 logs
 tmp
 midterm
+data/mujoco
 ################################
 Python Stuff
 ################################

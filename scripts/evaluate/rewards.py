@@ -1,11 +1,16 @@
 """Cumulative reward ranking and video replay of the ten worst attempts."""
 
 import csv
+import math
+import os
 from pathlib import Path
 import tempfile
 
 import numpy as np
 import torch
+
+MJCF = Path(__file__).resolve().parents[2] / "data" / "mujoco" / "g1" / "scene_29dof.xml"
+WIDTH, HEIGHT = 1280, 720
 
 
 def worst_attempts(totals, count=10):
@@ -65,27 +70,36 @@ def save_reward_histogram(totals, output):
     (output / "reward_histogram.svg").write_text("\n".join(svg), encoding="utf-8")
 
 
-@torch.inference_mode()
 def render_attempts(raw, states, attempts, output, criterion="worst_rewards"):
-    """Render cached physical states on environment zero without stepping the policy."""
+    """Replay cached physical states in MuJoCo without stepping the policy."""
     if not attempts:
         return
+    os.environ["MUJOCO_GL"] = "egl"
     import imageio.v2 as imageio
+    import mujoco
 
+    model = mujoco.MjModel.from_xml_path(str(MJCF))
+    model.vis.global_.offwidth, model.vis.global_.offheight = WIDTH, HEIGHT
+    # Vertical field of view of Isaac Sim's default perspective camera at 16:9.
+    model.vis.global_.fovy = 36.0
+    data = mujoco.MjData(model)
+    # Isaac Lab orders joints breadth-first, MuJoCo in file order.
     robot = raw.scene["robot"]
-    target_ids = torch.tensor([0], device=raw.device)
-    origin = raw.scene.env_origins[0]
-    raw.sim.set_camera_view(
-        eye=(origin + torch.tensor([2.5, 2.5, 1.8], device=raw.device)).tolist(),
-        target=(origin + torch.tensor([0., 0., 0.7], device=raw.device)).tolist(),
-    )
+    joint_qpos = [model.joint(name).qposadr[0] for name in robot.joint_names]
+    origins = raw.scene.env_origins.cpu().numpy()
+    # Follow the pelvis from (1.5, 1.5, 1.5), like the task's Isaac Lab viewer.
+    camera = mujoco.MjvCamera()
+    camera.distance = math.sqrt(3) * 1.5
+    camera.azimuth = 225.0
+    camera.elevation = -math.degrees(math.asin(1 / math.sqrt(3)))
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     combined_destination = output / f"{criterion}.mp4"
     combined_temporary = output / f"{criterion}.partial.mp4"
     try:
-        with imageio.get_writer(combined_temporary, fps=1 / raw.step_dt, codec="libx264",
-                                pixelformat="yuv420p", macro_block_size=2) as combined:
+        with mujoco.Renderer(model, HEIGHT, WIDTH) as renderer, \
+                imageio.get_writer(combined_temporary, fps=1 / raw.step_dt, codec="libx264",
+                                   pixelformat="yuv420p", macro_block_size=2) as combined:
             for attempt in attempts:
                 env_id = attempt["env_id"]
                 destination = output / attempt["video"]
@@ -94,23 +108,14 @@ def render_attempts(raw, states, attempts, output, criterion="worst_rewards"):
                 try:
                     with imageio.get_writer(temporary, fps=1 / raw.step_dt, codec="libx264",
                                             pixelformat="yuv420p", macro_block_size=2) as writer:
-                        for frame in range(len(states)):
-                            state = torch.tensor(states[frame, env_id:env_id + 1], device=raw.device)
-                            state[:, :3] += origin - raw.scene.env_origins[env_id]
-                            robot.write_root_state_to_sim(state[:, :13], env_ids=target_ids)
-                            robot.write_joint_state_to_sim(state[:, 13:13 + robot.num_joints],
-                                                          state[:, 13 + robot.num_joints:], env_ids=target_ids)
-                            raw.scene.write_data_to_sim()
-                            raw.sim.forward()
-                            raw.scene.update(raw.physics_dt)
-                            if frame == 0:
-                                raw.render()
-                                for _ in range(10):
-                                    raw.sim.render()
-                            raw.sim.render()
-                            rgb = raw.render(recompute=True)
-                            if rgb is None or not rgb.size:
-                                raise RuntimeError("Isaac Sim returned an empty RGB frame.")
+                        for state in states[:, env_id]:
+                            data.qpos[:3] = state[:3] - origins[env_id]
+                            data.qpos[3:7] = state[3:7]
+                            data.qpos[joint_qpos] = state[13:13 + robot.num_joints]
+                            mujoco.mj_kinematics(model, data)
+                            camera.lookat[:] = data.qpos[:3]
+                            renderer.update_scene(data, camera)
+                            rgb = renderer.render()
                             writer.append_data(rgb)
                             combined.append_data(rgb)
                     temporary.replace(destination)

@@ -11,7 +11,7 @@ random_attempts records ten randomly chosen trials and requires --record.
 --num-envs: parallel trials per clip (default: 1000).
 --clip-index: evaluate one clip; default is every training clip.
 --clips-dir: use the .npz clips in this directory instead of the run's saved training clips.
---record: enable video rendering and recording; disabled by default.
+--record: render videos by replaying the cached states in MuJoCo; disabled by default.
 --output: fresh result directory; defaults to evaluation/<run>_<model>_<YYYY-MM-DD_HH-MM-SS>.
 --seed: evaluation seed (default: 42).
 --foot-movement-threshold: post-standing foot displacement tolerance in meters (default: 0.02).
@@ -172,7 +172,7 @@ def main():
     parser.add_argument("--num-envs", type=int, default=1000)
     parser.add_argument("--clip-index", type=int)
     parser.add_argument("--clips-dir", type=Path)
-    parser.add_argument("--record", action="store_true", help="Enable video rendering and recording.")
+    parser.add_argument("--record", action="store_true", help="Render videos by replaying the cached states in MuJoCo.")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--foot-movement-threshold", type=float, default=0.1)
@@ -215,7 +215,7 @@ def main():
 
     print("[evaluate] Starting simulator...", flush=True)
     record_video = args.record and args.criterion in (None, "worst_rewards", "jitteriness", "foot_motion", "random_attempts")
-    app = AppLauncher(headless=True, device=args.device, enable_cameras=record_video).app
+    app = AppLauncher(headless=True, device=args.device).app
     print("[evaluate] Simulator started; loading evaluation modules...", flush=True)
     env = None
     try:
@@ -260,14 +260,12 @@ def main():
         for name in vars(env_cfg.terminations):
             if not name.startswith("_"):
                 setattr(env_cfg.terminations, name, None)
-        env_cfg.viewer.resolution = (1280, 720)
-        env_cfg.sim.render.rendering_mode = "performance"
         agent_cfg = load_cfg_from_registry(task, "rsl_rl_cfg_entry_point")
         rsl_version = installed_version("rsl-rl-lib")
         agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, rsl_version)
         agent_cfg.device = args.device
         agent_cfg.seed = args.seed
-        env = gym.make(task, cfg=env_cfg, render_mode="rgb_array" if record_video else None)
+        env = gym.make(task, cfg=env_cfg)
         env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
         runner_cfg = agent_cfg.to_dict()
         # Pass classes directly so the runner does not scan and import scripts.

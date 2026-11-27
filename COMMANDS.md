@@ -6,8 +6,8 @@
 /isaac-sim/python.sh scripts/rsl_rl/train.py \
   --task BeyondMimic \
   --headless \
-  --num_envs 2048 \
-  env.commands.motion.motion_file=/workspace/humanoid_standup/data/beyondmimic/side.npz \
+  --num_envs 4096 \
+  env.commands.motion.motion_file=/workspace/humanoid_standup/data/beyondmimic/back.npz \
   --run_name <name>
 ```
 
@@ -18,7 +18,7 @@
 /isaac-sim/python.sh scripts/rsl_rl/train.py \
   --task BeyondMimic \
   --headless \
-  --num_envs 2048 \
+  --num_envs 8192 \
   env.commands.motion.motion_directory=/workspace/humanoid_standup/data/beyondmimic \
   --run_name <name>
 ```
