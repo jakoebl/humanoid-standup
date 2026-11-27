@@ -8,7 +8,7 @@ import unittest
 import numpy as np
 
 MODULE = Path(__file__).resolve().parents[1] / (
-    "source/humanoid_standup/humanoid_standup/tasks/manager_based/beyond_mimic/motion_data.py"
+    "source/humanoid_standup/humanoid_standup/tasks/manager_based/humanoid_standup/motion_data.py"
 )
 spec = importlib.util.spec_from_file_location("motion_data", MODULE)
 module = importlib.util.module_from_spec(spec)

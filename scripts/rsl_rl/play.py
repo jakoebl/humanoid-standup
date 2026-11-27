@@ -237,8 +237,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if args_cli.video:
         env_cfg.viewer.resolution = (1920, 1080)
     if args_cli.standup_success_file:
-        if task_name != "BeyondMimic-Play" or env_cfg.commands.motion.play_clip_index is None:
-            raise ValueError("Standing evaluation requires BeyondMimic-Play with a selected clip.")
+        if task_name != "Humanoid-Standup-Play" or env_cfg.commands.motion.play_clip_index is None:
+            raise ValueError("Standing evaluation requires Humanoid-Standup-Play with a selected clip.")
         if args_cli.video:
             raise ValueError("Run standing evaluation separately from video recording.")
         for name in vars(env_cfg.terminations):

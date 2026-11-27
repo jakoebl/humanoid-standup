@@ -7,7 +7,7 @@ from pathlib import Path
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--task", default="BeyondMimic", choices=("BeyondMimic",))
+parser.add_argument("--task", default="Humanoid-Standup", choices=("Humanoid-Standup",))
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 app = AppLauncher(args).app

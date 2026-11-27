@@ -57,4 +57,4 @@ class MulticlipPPO(PPO):
 
 @configclass
 class MulticlipPPOCfg(RslRlPpoAlgorithmCfg):
-    class_name: str = "humanoid_standup.tasks.manager_based.beyond_mimic.multiclip_ppo:MulticlipPPO"
+    class_name: str = "humanoid_standup.tasks.manager_based.humanoid_standup.multiclip_ppo:MulticlipPPO"

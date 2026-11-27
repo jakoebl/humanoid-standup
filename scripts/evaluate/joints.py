@@ -30,7 +30,7 @@ def _clip_bounds(action_term, joint_names):
     if clip.shape == (len(joint_names), 2) and len(joint_names) != 1:
         return clip
     if not isinstance(configured, Mapping):
-        from humanoid_standup.tasks.manager_based.beyond_mimic.constants import JOINT_POSITION_LIMITS
+        from humanoid_standup.tasks.manager_based.humanoid_standup.constants import JOINT_POSITION_LIMITS
         configured = JOINT_POSITION_LIMITS
     bounds = np.full((len(joint_names), 2), [-np.inf, np.inf], dtype=np.float64)
     for expression, values in configured.items():

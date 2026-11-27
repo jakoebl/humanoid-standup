@@ -67,7 +67,7 @@ class EvaluationEnvironmentTest(unittest.TestCase):
         ))
         raw = SimpleNamespace(cfg=cfg, step_dt=.02, physics_dt=.005, scene={"robot": robot},
                               command_manager=SimpleNamespace(get_term=lambda name: motion))
-        summary = metadata.environment_summary(raw, "BeyondMimic", {"clip_actions": 1.})
+        summary = metadata.environment_summary(raw, "Humanoid-Standup", {"clip_actions": 1.})
         encoded = json.loads(json.dumps(summary, allow_nan=False))
         self.assertFalse(encoded["policy_observation_noise"]["joint_pos"]["enabled"])
         self.assertEqual(encoded["reset_joint_position_noise_rad"], [-.3, .3])

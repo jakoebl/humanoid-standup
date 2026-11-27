@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Display a BeyondMimic NPZ reference directly as a kinematic robot."""
+"""Display a Humanoid-Standup NPZ reference directly as a kinematic robot."""
 
 from __future__ import annotations
 
@@ -58,8 +58,8 @@ def play(args, app) -> None:
     import isaaclab.sim as sim_utils
     from isaaclab.sim import SimulationCfg, SimulationContext
 
-    from humanoid_standup.tasks.manager_based.beyond_mimic.constants import JOINT_NAMES
-    from humanoid_standup.tasks.manager_based.beyond_mimic.robot import robot_cfg
+    from humanoid_standup.tasks.manager_based.humanoid_standup.constants import JOINT_NAMES
+    from humanoid_standup.tasks.manager_based.humanoid_standup.robot import robot_cfg
 
     with np.load(args.clip, allow_pickle=False) as data:
         fps = float(np.asarray(data["fps"]).reshape(-1)[0])

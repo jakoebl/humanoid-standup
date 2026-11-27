@@ -5,12 +5,12 @@ from .multiclip_ppo import MulticlipPPOCfg
 
 
 @configclass
-class BeyondMimicPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+class HumanoidStandupPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     seed = 42
     num_steps_per_env = 24
     max_iterations = 30000
     save_interval = 500
-    experiment_name = "beyond_mimic"
+    experiment_name = "humanoid_standup"
     clip_actions = None
     obs_groups = {"actor": ["policy"], "critic": ["critic"]}
     actor = RslRlMLPModelCfg(

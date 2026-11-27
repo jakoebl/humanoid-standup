@@ -7,9 +7,9 @@ import unittest
 from unittest.mock import Mock
 
 import torch
-from humanoid_standup.tasks.manager_based.beyond_mimic.mdp.commands import MotionCommand
+from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.commands import MotionCommand
 
-path = Path(__file__).resolve().parents[1] / 'source/humanoid_standup/humanoid_standup/tasks/manager_based/beyond_mimic/mdp/collisionchecker.py'
+path = Path(__file__).resolve().parents[1] / 'source/humanoid_standup/humanoid_standup/tasks/manager_based/humanoid_standup/mdp/collisionchecker.py'
 spec = importlib.util.spec_from_file_location('reset_collisions', path)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)

@@ -44,7 +44,7 @@ def resolve_motion_files(directory, files, motion_file=None):
     else:
         paths = [Path(motion_file).expanduser().resolve()] if motion_file else []
     if not paths:
-        raise ValueError(f"No prepared NPZ clips found in {directory}; use precompute_beyond_mimic.py first.")
+        raise ValueError(f"No prepared NPZ clips found in {directory}; use precompute_motion.py first.")
     if len(set(paths)) != len(paths):
         raise ValueError("Motion files must be unique.")
     for path in paths:

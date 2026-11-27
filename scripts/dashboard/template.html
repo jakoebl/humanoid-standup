@@ -245,7 +245,7 @@ function runCard(run) {
     fmtDate(run.started),
     run.iterations ? `${fmtSteps(run.iterations)} it` : null,
     run.final_reward !== null ? `reward ${fmtNumber(run.final_reward)}` : null,
-    run.experiment !== "beyond_mimic" ? run.experiment : null,
+    run.experiment !== "humanoid_standup" ? run.experiment : null,
   ].filter(Boolean).join(" · ");
   return `<div class="run" data-run="${run.id}">
     <input type="checkbox" class="compare-box" title="Compare">

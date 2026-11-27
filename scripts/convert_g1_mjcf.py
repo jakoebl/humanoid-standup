@@ -1,4 +1,4 @@
-"""Convert the humanoid-mrl G1 MJCF into the USD used by the BeyondMimic task.
+"""Convert the humanoid-mrl G1 MJCF into the USD used by the Humanoid-Standup task.
 
 The MJCF collides each link through the convex hull of its Unitree mesh, so the
 thighs clear the pelvis as on the real robot. The foot capsules are replaced by the

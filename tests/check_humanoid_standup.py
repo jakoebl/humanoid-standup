@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Simulator checks for BeyondMimic dimensions, resets, and reference-free actor."""
+"""Simulator checks for Humanoid-Standup dimensions, resets, and reference-free actor."""
 
 import argparse
 
@@ -17,9 +17,9 @@ import humanoid_standup.tasks  # noqa: F401
 
 
 def main():
-    cfg = parse_env_cfg("BeyondMimic-Play", device=args.device, num_envs=2)
+    cfg = parse_env_cfg("Humanoid-Standup-Play", device=args.device, num_envs=2)
     cfg.commands.motion.debug_vis = False
-    env = gym.make("BeyondMimic-Play", cfg=cfg)
+    env = gym.make("Humanoid-Standup-Play", cfg=cfg)
     try:
         raw = env.unwrapped
         obs, _ = env.reset()

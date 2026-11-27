@@ -286,7 +286,7 @@ class CurriculumCfg:
 
 
 @configclass
-class BeyondMimicEnvCfg(ManagerBasedRLEnvCfg):
+class HumanoidStandupEnvCfg(ManagerBasedRLEnvCfg):
     """Isaac Lab port of the customized mjlab G1 tracking task."""
 
     # Scene settings
@@ -328,7 +328,7 @@ class BeyondMimicEnvCfg(ManagerBasedRLEnvCfg):
 
 
 @configclass
-class BeyondMimicPlayEnvCfg(BeyondMimicEnvCfg):
+class HumanoidStandupPlayEnvCfg(HumanoidStandupEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         self.scene.num_envs = 1

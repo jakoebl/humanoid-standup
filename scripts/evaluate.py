@@ -28,7 +28,7 @@ import sys
 
 from evaluate.checkpoints import resolve_clips, training_action_clip
 
-TASK = "BeyondMimic"
+TASK = "Humanoid-Standup"
 
 
 def json_safe(value):
@@ -236,7 +236,7 @@ def main():
         from evaluate.standing_up import StandingUp
         from evaluate.standing_push import StandingPush
 
-        from humanoid_standup.tasks.manager_based.beyond_mimic.env_cfg import CommandsCfg
+        from humanoid_standup.tasks.manager_based.humanoid_standup.env_cfg import CommandsCfg
 
         # copy the task environment and restore training noise for evaluation
         env_cfg = parse_env_cfg(TASK, device=args.device, num_envs=args.num_envs)

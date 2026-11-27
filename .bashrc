@@ -8,7 +8,7 @@ train() {
     shift
 
     isaaclab -p /workspace/humanoid_standup/scripts/rsl_rl/train.py \
-        --task BeyondMimic \
+        --task Humanoid-Standup \
         --headless \
         --run_name "$run_name" \
         "$@"
@@ -23,7 +23,7 @@ play() {
     local pattern="$1"
     shift
 
-    local root="/workspace/humanoid_standup/logs/rsl_rl/beyond_mimic"
+    local root="/workspace/humanoid_standup/logs/rsl_rl/humanoid_standup"
     local run checkpoint
 
     run=$(
@@ -52,7 +52,7 @@ play() {
 
     echo "Playing: $root/$run/$checkpoint"
     isaaclab -p /workspace/humanoid_standup/scripts/rsl_rl/play.py \
-        --task BeyondMimic-Play \
+        --task Humanoid-Standup-Play \
         --num_envs 1 \
         --checkpoint "$root/$run/$checkpoint" \
         "$@"

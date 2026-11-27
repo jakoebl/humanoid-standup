@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate named Isaac Lab body targets for BeyondMimic from a G1 CSV.
+"""Generate named Isaac Lab body targets for Humanoid-Standup from a G1 CSV.
 
 Accepts legacy centimeter/degree CSVs or mjlab-format meter/radian CSVs.
 Sampling defaults to 120 FPS input and 50 FPS output; specify the actual input
@@ -33,7 +33,7 @@ def main():
         parser.error("Frame rates must be positive.")
     app = AppLauncher(args).app
     try:
-        from humanoid_standup.tasks.manager_based.beyond_mimic.constants import JOINT_NAMES
+        from humanoid_standup.tasks.manager_based.humanoid_standup.constants import JOINT_NAMES
 
         print(f"Converting {args.input} to {args.output}", flush=True)
         rows = convert_rows(args.input, JOINT_NAMES)
@@ -118,8 +118,8 @@ def process(args, rows):
     import torch
     from isaaclab.assets import Articulation
     from isaaclab.sim import SimulationCfg, SimulationContext
-    from humanoid_standup.tasks.manager_based.beyond_mimic.constants import JOINT_NAMES
-    from humanoid_standup.tasks.manager_based.beyond_mimic.robot import robot_cfg
+    from humanoid_standup.tasks.manager_based.humanoid_standup.constants import JOINT_NAMES
+    from humanoid_standup.tasks.manager_based.humanoid_standup.robot import robot_cfg
 
     original = np.asarray(rows)
     source_times = np.arange(len(rows)) / args.input_fps

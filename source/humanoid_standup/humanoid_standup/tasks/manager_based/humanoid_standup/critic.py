@@ -49,4 +49,4 @@ class MultiCritic(MLPModel):
 
 @configclass
 class MultiCriticCfg(RslRlMLPModelCfg):
-    class_name: str = "humanoid_standup.tasks.manager_based.beyond_mimic.critic:MultiCritic"
+    class_name: str = "humanoid_standup.tasks.manager_based.humanoid_standup.critic:MultiCritic"

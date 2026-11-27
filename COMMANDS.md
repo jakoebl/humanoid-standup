@@ -1,10 +1,10 @@
-# BeyondMimic training commands
+# Humanoid-Standup training commands
 
 ## Training with a single clip
 
 ```bash
 /isaac-sim/python.sh scripts/rsl_rl/train.py \
-  --task BeyondMimic \
+  --task Humanoid-Standup \
   --headless \
   --num_envs 4096 \
   env.commands.motion.motion_file=/workspace/humanoid_standup/data/beyondmimic/back.npz \
@@ -16,7 +16,7 @@
 
 ```bash
 /isaac-sim/python.sh scripts/rsl_rl/train.py \
-  --task BeyondMimic \
+  --task Humanoid-Standup \
   --headless \
   --num_envs 8192 \
   env.commands.motion.motion_directory=/workspace/humanoid_standup/data/beyondmimic \
@@ -30,10 +30,10 @@ The clip list is saved in the run's `params/training_clips.yaml`.
 
 ```bash
 /isaac-sim/python.sh scripts/rsl_rl/train.py \
-  --task BeyondMimic \
+  --task Humanoid-Standup \
   --headless \
   --resume \
-  --load_run logs/rsl_rl/beyond_mimic/? \
+  --load_run logs/rsl_rl/humanoid_standup/? \
   --checkpoint model_?.pt \
   --max_iterations 30000 \
   env.commands.motion.motion_file=/workspace/humanoid_standup/data/beyondmimic/side.npz
@@ -44,10 +44,10 @@ The clip list is saved in the run's `params/training_clips.yaml`.
 
 ```bash
 /isaac-sim/python.sh scripts/rsl_rl/train.py \
-  --task BeyondMimic \
+  --task Humanoid-Standup \
   --headless \
   --resume \
-  --load_run logs/rsl_rl/beyond_mimic/? \
+  --load_run logs/rsl_rl/humanoid_standup/? \
   --checkpoint model_?.pt \
   --max_iterations 30000 \
   env.commands.motion.motion_directory=/workspace/humanoid_standup/data/beyondmimic

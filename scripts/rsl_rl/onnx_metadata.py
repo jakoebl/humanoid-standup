@@ -24,7 +24,7 @@ def tracking_policy_metadata(env):
     joint_order = list(action._joint_names)
     count = len(joint_order)
     if action.cfg.clip is not None:
-        from humanoid_standup.tasks.manager_based.beyond_mimic.constants import JOINT_POSITION_LIMITS
+        from humanoid_standup.tasks.manager_based.humanoid_standup.constants import JOINT_POSITION_LIMITS
 
         expected = torch.tensor(
             [JOINT_POSITION_LIMITS[name] for name in joint_order],
