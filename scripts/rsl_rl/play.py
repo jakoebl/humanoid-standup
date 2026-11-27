@@ -17,11 +17,6 @@ import cli_args  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
-parser.add_argument("--reference-clips-dir", type=str,
-                    help="Humanoid-Standup reference CSV directory for playback.")
-parser.add_argument("--record-policy-dir", type=str, help="Record each clip from frame 0 at 1080p and 60 fps.")
-parser.add_argument("--record-policy-repetitions", type=int, default=1,
-                    help="Record this many rollouts per clip, each starting at frame 0.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
 parser.add_argument("--video_folder", type=str, default=None, help="Output directory for recorded videos.")
@@ -57,7 +52,7 @@ if args_cli.initial_joint_noise_sweep is not None:
     if any(not math.isfinite(value) or value < 0 for value in args_cli.initial_joint_noise_sweep):
         parser.error("Initial joint noise amplitudes must be finite and nonnegative.")
 # always enable cameras to record video
-if args_cli.video or args_cli.record_policy_dir:
+if args_cli.video:
     args_cli.enable_cameras = True
 
 # clear out sys.argv for Hydra
@@ -85,7 +80,6 @@ import gymnasium as gym
 import torch
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
-import isaaclab.sim as sim_utils
 from isaaclab.envs import (
     DirectMARLEnv,
     DirectMARLEnvCfg,
@@ -93,7 +87,6 @@ from isaaclab.envs import (
     ManagerBasedRLEnvCfg,
     multi_agent_to_single_agent,
 )
-from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
 
@@ -111,86 +104,13 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import humanoid_standup.tasks  # noqa: F401
-from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import REFERENCE
-from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.position_tracking import position_tracking_targets
 
-# Load all training clips before Hydra constructs the environment config.
-IS_TRACKING_TASK = args_cli.task is not None and args_cli.task.split(":")[-1].startswith(("BeyondMimic", "Mimic-Multiclip"))
-if not IS_TRACKING_TASK:
-    reference_directory = (Path(args_cli.reference_clips_dir) if args_cli.reference_clips_dir else
-                           Path(__file__).resolve().parents[2] / "data/training")
-    REFERENCE.__init__(reference_directory, REFERENCE.dt, REFERENCE.device)
-elif args_cli.record_policy_dir:
-    raise ValueError("BeyondMimic playback supports --video; --record-policy-dir is for Humanoid-Standup clips.")
-
-
-class KinematicsVisualization(gym.Wrapper):
-    """Display clip targets and measured kinematics, including in recorded video."""
-
-    def __init__(self, env):
-        super().__init__(env)
-        self.robot = env.unwrapped.scene["robot"]
-        self.body_ids, names = self.robot.find_bodies(REFERENCE.END_EFFECTOR_NAMES, preserve_order=True)
-        if list(names) != list(REFERENCE.END_EFFECTOR_NAMES):
-            raise ValueError(f"Could not resolve reference end effectors in order: {names}")
-        self.masses = self.robot.root_physx_view.get_masses().to(self.robot.device)
-        colors = {
-            "com": (1.0, 0.8, 0.0),
-            "left_wrist": (1.0, 0.1, 0.1),
-            "right_wrist": (0.1, 0.3, 1.0),
-            "left_foot": (1.0, 0.1, 0.6),
-            "right_foot": (0.1, 1.0, 0.5),
-        }
-        self.reference_markers = VisualizationMarkers(VisualizationMarkersCfg(
-            prim_path="/Visuals/ReferenceKinematics",
-            markers={name: sim_utils.SphereCfg(
-                radius=0.045 if name == "com" else 0.035,
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color),
-            ) for name, color in colors.items()},
-        ))
-        self.actual_markers = VisualizationMarkers(VisualizationMarkersCfg(
-            prim_path="/Visuals/ActualKinematics",
-            markers={name: sim_utils.CuboidCfg(
-                size=(0.04, 0.04, 0.04),
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color),
-            ) for name, color in colors.items()},
-        ))
-        self.marker_indices = torch.arange(5, device=self.robot.device).repeat(env.unwrapped.num_envs)
-        print("[INFO] Kinematics: spheres = clip targets; cubes = actual robot positions. "
-              "COM yellow, left/right wrist red/blue, left/right foot pink/green. "
-              "Above the standing CoM threshold, targets follow the actual left foot and stance yaw.")
-
-    def update_markers(self):
-        env = self.env.unwrapped
-        frame_ids = REFERENCE.frame_ids_for_env(env).to(REFERENCE.device)
-        targets = torch.cat((REFERENCE.get_com_pos(frame_ids)[:, None, :],
-                             REFERENCE.get_end_effector_pos(frame_ids)), dim=1).to(self.robot.device)
-        height = env.cfg.rewards.com_tracking.params["upright_com_height"]
-        targets = position_tracking_targets(env, self.robot, frame_ids, targets, height)
-        targets = targets + env.scene.env_origins[:, None, :]
-        com = (self.robot.data.body_com_pos_w * self.masses[..., None]).sum(dim=1)
-        com = com / self.masses.sum(dim=1, keepdim=True)
-        actual = torch.cat((com[:, None, :], self.robot.data.body_link_pos_w[:, self.body_ids]), dim=1)
-        self.reference_markers.visualize(translations=targets.reshape(-1, 3), marker_indices=self.marker_indices)
-        self.actual_markers.visualize(translations=actual.reshape(-1, 3), marker_indices=self.marker_indices)
-
-    def reset(self, **kwargs):
-        result = self.env.reset(**kwargs)
-        self.update_markers()
-        return result
-
-    def step(self, action):
-        result = self.env.step(action)
-        self.update_markers()
-        if self.env.unwrapped.sim.has_gui():
-            self.env.unwrapped.sim.render()
-        return result
+# Whole-body CoM height counted as standing by the standing evaluation.
+UPRIGHT_COM_HEIGHT = 0.5
 
 
 def evaluate_standup_success(env, runner, policy, output_file):
     """Count trials that reach standing, without early resets or clip looping."""
-    from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.position_tracking import UPRIGHT_COM_HEIGHT
-
     raw = env.unwrapped
     motion = raw.command_manager.get_term("motion")
     clip_id = motion.cfg.play_clip_index
@@ -266,63 +186,6 @@ def evaluate_initial_joint_noise(env, runner, policy, output_file):
     ), indent=2))
 
 
-def record_policy_rollouts(env, runner, policy, output_dir, action_repeat=1, repetitions=1):
-    """Record each clip from frame zero, holding actions between capture steps."""
-    import math
-    import tempfile
-    import imageio.v2 as imageio
-
-    if repetitions < 1:
-        raise ValueError("Recording repetitions must be positive.")
-    raw = env.unwrapped
-    reset_cfg = raw.event_manager.get_term_cfg("reset_robot")
-    if version.parse(installed_version) >= version.parse("4.0.0"):
-        policy_nn = policy
-    else:
-        policy_nn = getattr(runner.alg, "policy", None)
-        if policy_nn is None:
-            policy_nn = runner.alg.actor_critic
-    for clip_id, clip in enumerate(REFERENCE.paths):
-        folder = output_dir / clip.stem
-        folder.mkdir(parents=True, exist_ok=True)
-        for repetition in range(repetitions):
-            reset_cfg.params.update(clip_id=clip_id, start_fraction=0.0)
-            raw.event_manager.set_term_cfg("reset_robot", reset_cfg)
-            with torch.inference_mode():
-                obs, _ = env.reset()
-                policy_nn.reset(torch.ones(raw.num_envs, dtype=torch.bool, device=raw.device))
-                start = int(raw.reference_start_frames[0].item())
-                remaining = int(REFERENCE.clip_lengths[clip_id].item()) - 1 - start
-                steps = math.ceil(remaining * REFERENCE.dt / raw.step_dt)
-                raw.render()
-                for _ in range(10):
-                    raw.sim.render()
-                output = folder / f"{repetition}.mp4"
-                fd, temporary = tempfile.mkstemp(suffix=".mp4", prefix=".record-", dir=folder)
-                os.close(fd)
-                try:
-                    with imageio.get_writer(temporary, format="FFMPEG", mode="I",
-                                            fps=1 / raw.step_dt, codec="libx264",
-                                            pixelformat="yuv420p", macro_block_size=2) as writer:
-                        for frame in range(steps + 1):
-                            if frame:
-                                if (frame - 1) % action_repeat == 0:
-                                    action = policy(obs)
-                                obs, _, _, _ = env.step(action)
-                            # Headless steps may skip rendering without RTX sensors.
-                            # Flush physics/marker updates before reading the RGB annotator;
-                            # render(recompute=True) alone can return its cached frame.
-                            raw.sim.render()
-                            rgb = raw.render(recompute=True)
-                            if rgb is None or not rgb.size:
-                                raise RuntimeError("Isaac Sim returned an empty RGB frame.")
-                            writer.append_data(rgb)
-                    os.replace(temporary, output)
-                    print(f"Saved {output}", flush=True)
-                finally:
-                    Path(temporary).unlink(missing_ok=True)
-
-
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     """Play with RSL-RL agent."""
@@ -362,49 +225,21 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env_cfg.log_dir = log_dir
 
     # create isaac environment
-    # Evaluate and validate reference kinematics at the true robot mass.
-    if not IS_TRACKING_TASK:
-        env_cfg.curriculum.robot_mass = None
-
     # Let playback continue through tracking errors until the reference finishes.
-    if IS_TRACKING_TASK:
-        env_cfg.observations.policy.enable_corruption = False
-        env_cfg.events.push_robot = None
-        env_cfg.events.assist_force = None
-        env_cfg.curriculum.assist_force = None
-        env_cfg.commands.motion.sampling_mode = "start"
-        env_cfg.commands.motion.pose_range = {}
-        env_cfg.commands.motion.velocity_range = {}
-        # Preserve the task-configured joint position noise on reset.
-    else:
-        env_cfg.terminations.ee_deviation = None
-        env_cfg.terminations.com_deviation = None
-        print(f"[INFO] Playback samples uniformly from {REFERENCE.num_clips} training clips on each reset.")
+    env_cfg.observations.policy.enable_corruption = False
+    env_cfg.events.push_robot = None
+    env_cfg.events.assist_force = None
+    env_cfg.curriculum.assist_force = None
+    env_cfg.commands.motion.sampling_mode = "start"
+    env_cfg.commands.motion.pose_range = {}
+    env_cfg.commands.motion.velocity_range = {}
+    # Preserve the task-configured joint position noise on reset.
     if args_cli.video:
         env_cfg.viewer.resolution = (1920, 1080)
-    if args_cli.record_policy_dir:
-        env_cfg.scene.num_envs = 1
-        env_cfg.viewer.resolution = (1920, 1080)
-        # Capture at 60 Hz while retaining the original policy action period.
-        original_decimation = env_cfg.decimation
-        recording_decimation = round(1 / (60 * env_cfg.sim.dt))
-        if (recording_decimation < 1
-                or abs(recording_decimation * env_cfg.sim.dt - 1 / 60) > 1e-9
-                or original_decimation % recording_decimation):
-            raise ValueError("60 fps recording requires compatible physics and policy timing.")
-        recording_action_repeat = original_decimation // recording_decimation
-        env_cfg.decimation = recording_decimation
-        env_cfg.sim.render_interval = recording_decimation
-        env_cfg.observations.policy.enable_corruption = False
-        env_cfg.events.reset_robot.params.update(joint_pos_noise=0.0, joint_vel_noise=0.0)
-        # Record to the end without automatic resets contaminating the final frame.
-        for name in vars(env_cfg.terminations):
-            if not name.startswith("_"):
-                setattr(env_cfg.terminations, name, None)
     if args_cli.standup_success_file:
         if task_name != "BeyondMimic-Play" or env_cfg.commands.motion.play_clip_index is None:
             raise ValueError("Standing evaluation requires BeyondMimic-Play with a selected clip.")
-        if args_cli.video or args_cli.record_policy_dir:
+        if args_cli.video:
             raise ValueError("Run standing evaluation separately from video recording.")
         for name in vars(env_cfg.terminations):
             if not name.startswith("_"):
@@ -412,16 +247,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if args_cli.disable_fabric:
         env_cfg.sim.use_fabric = False
 
-    env = gym.make(args_cli.task, cfg=env_cfg,
-                   render_mode="rgb_array" if args_cli.video or args_cli.record_policy_dir else None)
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
         env = multi_agent_to_single_agent(env)
-
-    # Update markers before RecordVideo captures each frame.
-    if not IS_TRACKING_TASK:
-        env = KinematicsVisualization(env)
 
     # wrap for video recording
     if args_cli.video:
@@ -461,15 +291,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             env.close()
         return
 
-    if args_cli.record_policy_dir:
-        try:
-            record_policy_rollouts(env, runner, policy, Path(args_cli.record_policy_dir),
-                                   action_repeat=recording_action_repeat,
-                                   repetitions=args_cli.record_policy_repetitions)
-        finally:
-            env.close()
-        return
-
     # export the trained policy to JIT and ONNX formats
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
 
@@ -496,11 +317,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
         export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
 
-    if IS_TRACKING_TASK:
-        from onnx_metadata import attach_tracking_metadata
+    from onnx_metadata import attach_tracking_metadata
 
-        attach_tracking_metadata(env.unwrapped, os.path.join(export_model_dir, "policy.onnx"))
-        print("[INFO] Attached g1_rl_controller deployment metadata to policy.onnx.")
+    attach_tracking_metadata(env.unwrapped, os.path.join(export_model_dir, "policy.onnx"))
+    print("[INFO] Attached g1_rl_controller deployment metadata to policy.onnx.")
 
     dt = env.unwrapped.step_dt
 

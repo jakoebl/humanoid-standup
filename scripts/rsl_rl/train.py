@@ -9,7 +9,6 @@
 
 import argparse
 import sys
-from pathlib import Path
 
 from isaaclab.app import AppLauncher
 
@@ -106,12 +105,6 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 logger = logging.getLogger(__name__)
 
 import humanoid_standup.tasks  # noqa: F401
-from humanoid_standup.tasks.manager_based.humanoid_standup.mdp.reference import REFERENCE
-
-# Update the shared reference before Hydra constructs the environment config.
-IS_TRACKING_TASK = args_cli.task is not None and args_cli.task.split(":")[-1].startswith(("BeyondMimic", "Mimic-Multiclip"))
-if not IS_TRACKING_TASK:
-    REFERENCE.__init__(Path(__file__).resolve().parents[2] / "data/training", REFERENCE.dt, REFERENCE.device)
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -223,39 +216,20 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
         runner.load(resume_path)
-        # RSL-RL checkpoints store learning iteration, but not environment counters.
-        # Restore the mass schedule before resetting every environment for rollout.
-        if not IS_TRACKING_TASK:
-            env.unwrapped.mass_curriculum_step_offset = (
-                runner.current_learning_iteration * agent_cfg.num_steps_per_env
-            )
         env.reset()
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
-    if IS_TRACKING_TASK:
-        motion = env.unwrapped.command_manager.get_term("motion").motion
-        clip_paths = list(motion.paths)
-        reference_dt = env_cfg.sim.dt * env_cfg.decimation
-    else:
-        clip_paths = [str(path) for path in REFERENCE.paths]
-        reference_dt = REFERENCE.dt
+    clip_paths = list(env.unwrapped.command_manager.get_term("motion").motion.paths)
     dump_yaml(
         os.path.join(log_dir, "params", "training_clips.yaml"),
-        {"dt": reference_dt, "clips": clip_paths},
+        {"dt": env_cfg.sim.dt * env_cfg.decimation, "clips": clip_paths},
     )
 
     # run training
     print("\n" + "=" * 80)
-    if IS_TRACKING_TASK:
-        print(f"[INFO] Training reference clips: {len(clip_paths)}")
-    else:
-        print(f"[INFO] Training clips: {REFERENCE.num_clips}")
-        print(f"[INFO] Directory: {REFERENCE.path}")
-        for index, (clip_path, frames) in enumerate(zip(REFERENCE.paths, REFERENCE.clip_lengths.tolist()), 1):
-            print(f"  {index:2d}. {clip_path.name} | {frames} frames | {(frames - 1) * REFERENCE.dt:.2f} s")
-        print("[INFO] Each environment samples a clip uniformly on reset.")
+    print(f"[INFO] Training reference clips: {len(clip_paths)}")
     print("=" * 80, flush=True)
     with latest_iteration(runner):
         runner.learn(num_learning_iterations=agent_cfg.max_iterations)

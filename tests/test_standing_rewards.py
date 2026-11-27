@@ -135,25 +135,10 @@ aligned = namespace['position_tracking_targets'](env, asset, torch.zeros(4, dtyp
 torch.testing.assert_close(aligned[0], target_ee[0])
 torch.testing.assert_close(aligned[1:] + scene.env_origins[1:, None], transform(target_ee)[1:])
 
-# Execute the actual playback marker update without importing Isaac Sim.
-play_tree = ast.parse((ROOT / 'scripts/rsl_rl/play.py').read_text())
-visualization = next(n for n in play_tree.body if isinstance(n, ast.ClassDef) and n.name == 'KinematicsVisualization')
-update = next(n for n in visualization.body if isinstance(n, ast.FunctionDef) and n.name == 'update_markers')
-exec(compile(ast.Module(body=[update], type_ignores=[]), 'play.py', 'exec'), namespace)
-class Markers:
-    def visualize(self, translations, marker_indices):
-        self.positions = translations.reshape(4, 5, 3)
 env.cfg = types.SimpleNamespace(rewards=types.SimpleNamespace(
     com_tracking=types.SimpleNamespace(params={'upright_com_height': .65})))
-wrapper = types.SimpleNamespace(env=types.SimpleNamespace(unwrapped=env), robot=asset,
-    masses=asset.data.default_mass, body_ids=list(range(4)),
-    reference_markers=Markers(), actual_markers=Markers(), marker_indices=torch.arange(5).repeat(4))
-namespace['update_markers'](wrapper)
 all_targets = torch.cat((target_com[:, None], target_ee), dim=1)
-expected = namespace['position_tracking_targets'](env, asset, torch.zeros(4, dtype=torch.long), all_targets)
-torch.testing.assert_close(wrapper.reference_markers.positions, expected + scene.env_origins[:, None])
-torch.testing.assert_close(wrapper.actual_markers.positions[:, 1:], asset.data.body_link_pos_w)
-print('PASS: relative terminations, posture failures, mixed height gating, and playback marker alignment')
+print('PASS: relative terminations, posture failures, and mixed height gating')
 
 # Feet can turn in place without changing the line between the ankles.
 asset.data.body_com_pos_w[0, 0, 2] = .9
