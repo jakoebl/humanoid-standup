@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Run full-clip trials with the selected evaluation.
 
---checkpoint: model to evaluate; task and clips are inferred from its path.
+--checkpoint: model to evaluate; clips are inferred from its path.
 Action clipping matches the run's params/env.yaml: on if it trained clipped, off otherwise.
 --criterion: standing_up, foot_motion, lifted_foot, jitteriness, actuator_effort, joints, worst_rewards,
 random_attempts or standing_push.
 Omit to run all unpushed evaluations; standing_push is a separate disturbed rollout.
 random_attempts records ten randomly chosen trials and requires --record.
---task: optional task override for relocated checkpoints.
 --num-envs: parallel trials per clip (default: 1000).
 --clip-index: evaluate one clip; default is every training clip.
 --clips-dir: use the .npz clips in this directory instead of the run's saved training clips.
@@ -27,7 +26,9 @@ import math
 from pathlib import Path
 import sys
 
-from evaluate.checkpoints import infer_task, resolve_clips, training_action_clip
+from evaluate.checkpoints import resolve_clips, training_action_clip
+
+TASK = "BeyondMimic"
 
 
 def json_safe(value):
@@ -168,7 +169,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--criterion", choices=("standing_up", "foot_motion", "lifted_foot", "jitteriness", "actuator_effort", "joints", "worst_rewards", "random_attempts", "standing_push"))
-    parser.add_argument("--task")
     parser.add_argument("--num-envs", type=int, default=1000)
     parser.add_argument("--clip-index", type=int)
     parser.add_argument("--clips-dir", type=Path)
@@ -191,14 +191,11 @@ def main():
     if args.criterion == "random_attempts" and not args.record:
         parser.error("--criterion random_attempts requires --record.")
     try:
-        task = args.task or infer_task(checkpoint)
-        clips = resolve_clips(checkpoint, Path(__file__).resolve().parents[1], task, args.clips_dir)
+        clips = resolve_clips(checkpoint, Path(__file__).resolve().parents[1], args.clips_dir)
         action_clip = training_action_clip(checkpoint)
     except ValueError as error:
         parser.error(str(error))
 
-    if task.split(":")[-1] not in ("BeyondMimic", "BeyondMimic-Play"):
-        parser.error("Full-clip evaluation currently requires a BeyondMimic checkpoint.")
     if args.clip_index is not None and not 0 <= args.clip_index < len(clips):
         parser.error(f"--clip-index must be between 0 and {len(clips) - 1}.")
     from datetime import datetime, timezone
@@ -242,7 +239,7 @@ def main():
         from humanoid_standup.tasks.manager_based.beyond_mimic.env_cfg import CommandsCfg
 
         # copy the task environment and restore training noise for evaluation
-        env_cfg = parse_env_cfg(task, device=args.device, num_envs=args.num_envs)
+        env_cfg = parse_env_cfg(TASK, device=args.device, num_envs=args.num_envs)
         env_cfg.seed = args.seed
         # Clip actions exactly as during training.
         env_cfg.actions.joint_pos.clip = action_clip
@@ -260,12 +257,12 @@ def main():
         for name in vars(env_cfg.terminations):
             if not name.startswith("_"):
                 setattr(env_cfg.terminations, name, None)
-        agent_cfg = load_cfg_from_registry(task, "rsl_rl_cfg_entry_point")
+        agent_cfg = load_cfg_from_registry(TASK, "rsl_rl_cfg_entry_point")
         rsl_version = installed_version("rsl-rl-lib")
         agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, rsl_version)
         agent_cfg.device = args.device
         agent_cfg.seed = args.seed
-        env = gym.make(task, cfg=env_cfg)
+        env = gym.make(TASK, cfg=env_cfg)
         env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
         runner_cfg = agent_cfg.to_dict()
         # Pass classes directly so the runner does not scan and import scripts.
@@ -328,7 +325,7 @@ def main():
                            "action_clipping": action_clip is not None,
                            "criterion": args.criterion or "all",
                            "evaluations": {evaluation.name: evaluation.summary() for evaluation in evaluations},
-                           "environment": environment_summary(raw, task, agent_cfg)}                           
+                           "environment": environment_summary(raw, TASK, agent_cfg)}                           
                 (destination / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
                 # save data for each evaluation

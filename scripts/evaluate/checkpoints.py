@@ -1,32 +1,17 @@
-"""Infer checkpoint tasks, locate their training clips and read their training config."""
+"""Locate a checkpoint's training clips and read its training config."""
 
 import math
 from pathlib import Path
 
 
-def infer_task(checkpoint):
-    """Identify the task from the checkpoint's experiment directory."""
-    experiments = {
-        "humanoid_standup": "Humanoid-Standup",
-        "beyond_mimic": "BeyondMimic",
-        "mimic_multiclip": "BeyondMimic",  # Historical experiment directory.
-    }
-    for parent in checkpoint.parents:
-        if parent.name in experiments:
-            return experiments[parent.name]
-    raise ValueError("Cannot infer task from checkpoint path; specify --task Humanoid-Standup or BeyondMimic.")
-
-
-def resolve_clips(checkpoint, project, task, override=None):
-    """Use the run's saved clips, falling back to the task's data directory."""
+def resolve_clips(checkpoint, project, override=None):
+    """Use the run's saved clips, falling back to data/beyondmimic."""
     import yaml
 
-    tracking = task.split(":")[-1].startswith("BeyondMimic")
-    extension = ".npz" if tracking else ".csv"
-    directory = project / "data" / ("beyondmimic" if tracking else "training")
+    directory = project / "data" / "beyondmimic"
     manifest = checkpoint.parent / "params/training_clips.yaml"
     if override:
-        clips = sorted(override.expanduser().resolve().glob(f"*{extension}"))
+        clips = sorted(override.expanduser().resolve().glob("*.npz"))
     elif manifest.is_file():
         with manifest.open() as stream:
             saved = yaml.safe_load(stream)
@@ -43,9 +28,9 @@ def resolve_clips(checkpoint, project, task, override=None):
                 raise ValueError(f"Training clip not found: {value}; use --clips-dir to override.")
             clips.append(resolved)
     else:
-        clips = sorted(directory.glob(f"*{extension}"))
+        clips = sorted(directory.glob("*.npz"))
     if not clips:
-        raise ValueError(f"No {extension} clips found for {task}.")
+        raise ValueError("No .npz clips found.")
     return clips
 
 

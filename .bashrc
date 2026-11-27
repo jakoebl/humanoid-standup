@@ -39,7 +39,6 @@ play() {
     fi
 
     case "$run" in
-        rsl_rl/humanoid_standup/*) task="Humanoid-Standup" ;;
         rsl_rl/beyond_mimic/*) task="BeyondMimic-Play" ;;
         rsl_rl/mimic_multiclip/*) task="Mimic-Multiclip-Play" ;;
         *)
