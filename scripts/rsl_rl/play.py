@@ -317,10 +317,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
         export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
 
-    from onnx_metadata import attach_tracking_metadata
+    # The deployment controller does not provide the lie-down goal observation yet.
+    if train_task_name == "Humanoid-Standup":
+        from onnx_metadata import attach_tracking_metadata
 
-    attach_tracking_metadata(env.unwrapped, os.path.join(export_model_dir, "policy.onnx"))
-    print("[INFO] Attached g1_rl_controller deployment metadata to policy.onnx.")
+        attach_tracking_metadata(env.unwrapped, os.path.join(export_model_dir, "policy.onnx"))
+        print("[INFO] Attached g1_rl_controller deployment metadata to policy.onnx.")
 
     dt = env.unwrapped.step_dt
 

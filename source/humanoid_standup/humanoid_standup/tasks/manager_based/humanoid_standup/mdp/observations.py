@@ -24,6 +24,12 @@ def motion_clip_one_hot(env: ManagerBasedEnv) -> torch.Tensor:
     return torch.nn.functional.one_hot(command.clip_ids, num_classes=len(command.motion.paths)).float()
 
 
+def motion_goal_one_hot(env: ManagerBasedEnv) -> torch.Tensor:
+    """[stand_up, lie_down] goal of the clip currently selected for each environment."""
+    command = env.command_manager.get_term("motion")
+    return torch.nn.functional.one_hot(command.clip_lie_down[command.clip_ids].long(), num_classes=2).float()
+
+
 def imu_lin_vel(env):
     return env.scene["imu"].data.lin_vel_b
 

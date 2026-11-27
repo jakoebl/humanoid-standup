@@ -4,6 +4,14 @@ import math
 from pathlib import Path
 
 
+TASKS = {"humanoid_standup": "Humanoid-Standup", "humanoid_standup_liedown": "Humanoid-Standup-Liedown"}
+
+
+def task_for(checkpoint):
+    """Name the task from the run's experiment folder."""
+    return TASKS[checkpoint.parent.parent.name]
+
+
 def resolve_clips(checkpoint, project, override=None):
     """Use the run's saved clips, falling back to data/beyondmimic."""
     import yaml

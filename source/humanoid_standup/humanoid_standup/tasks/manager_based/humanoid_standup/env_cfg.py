@@ -328,6 +328,22 @@ class HumanoidStandupEnvCfg(ManagerBasedRLEnvCfg):
 
 
 @configclass
+class LiedownObservationsCfg(ObservationsCfg):
+    """Adds the stand-up or lie-down goal to the actor observations."""
+
+    @configclass
+    class PolicyCfg(ObservationsCfg.PolicyCfg):
+        goal = ObsTerm(func=mdp.motion_goal_one_hot)
+
+    policy: PolicyCfg = PolicyCfg()
+
+
+@configclass
+class HumanoidStandupLiedownEnvCfg(HumanoidStandupEnvCfg):
+    observations: LiedownObservationsCfg = LiedownObservationsCfg()
+
+
+@configclass
 class HumanoidStandupPlayEnvCfg(HumanoidStandupEnvCfg):
     def __post_init__(self):
         super().__post_init__()
@@ -343,3 +359,8 @@ class HumanoidStandupPlayEnvCfg(HumanoidStandupEnvCfg):
         self.commands.motion.play_clip_index = 0
         self.commands.motion.sampling_mode = "start"
         self.commands.motion.debug_vis = False
+
+
+@configclass
+class HumanoidStandupLiedownPlayEnvCfg(HumanoidStandupPlayEnvCfg):
+    observations: LiedownObservationsCfg = LiedownObservationsCfg()

@@ -60,3 +60,10 @@ class TrainingActionClipTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TaskForTest(unittest.TestCase):
+    def test_names_task_from_experiment_folder(self):
+        self.assertEqual(module.task_for(Path("logs/rsl_rl/humanoid_standup/run/model_1.pt")), "Humanoid-Standup")
+        self.assertEqual(module.task_for(Path("logs/rsl_rl/humanoid_standup_liedown/run/model_1.pt")),
+                         "Humanoid-Standup-Liedown")

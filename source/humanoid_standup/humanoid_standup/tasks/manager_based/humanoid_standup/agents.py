@@ -39,3 +39,8 @@ class HumanoidStandupPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         max_grad_norm=1.0,
         normalize_advantage_per_mini_batch=False,
     )
+
+
+@configclass
+class HumanoidStandupLiedownPPORunnerCfg(HumanoidStandupPPORunnerCfg):
+    experiment_name = "humanoid_standup_liedown"

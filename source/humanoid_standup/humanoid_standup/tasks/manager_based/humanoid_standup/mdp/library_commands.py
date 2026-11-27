@@ -47,6 +47,7 @@ class MulticlipMotionCommand(MotionCommand):
         self.pending_failures = [torch.zeros_like(counts) for counts in self.failed_bins]
         self.metrics["clip_id"] = torch.zeros(self.num_envs, device=self.device)
         self.clip_names = [Path(path).stem for path in self.motion.paths]
+        self.clip_lie_down = torch.tensor([name.startswith("lie_down") for name in self.clip_names], device=self.device)
 
     def reset(self, env_ids=None):
         clip_ids = self.clip_ids[env_ids]

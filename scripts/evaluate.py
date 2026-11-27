@@ -26,9 +26,7 @@ import math
 from pathlib import Path
 import sys
 
-from evaluate.checkpoints import resolve_clips, training_action_clip
-
-TASK = "Humanoid-Standup"
+from evaluate.checkpoints import resolve_clips, task_for, training_action_clip
 
 
 def json_safe(value):
@@ -201,6 +199,7 @@ def main():
     from datetime import datetime, timezone
 
     project = Path(__file__).resolve().parents[1]
+    task = task_for(checkpoint)
     output = (args.output.expanduser().resolve() if args.output else
               project / "evaluation" /
               f"{checkpoint.parent.name}_{checkpoint.stem}_{datetime.now(timezone.utc):%Y-%m-%d_%H-%M-%S}")
@@ -239,7 +238,7 @@ def main():
         from humanoid_standup.tasks.manager_based.humanoid_standup.env_cfg import CommandsCfg
 
         # copy the task environment and restore training noise for evaluation
-        env_cfg = parse_env_cfg(TASK, device=args.device, num_envs=args.num_envs)
+        env_cfg = parse_env_cfg(task, device=args.device, num_envs=args.num_envs)
         env_cfg.seed = args.seed
         # Clip actions exactly as during training.
         env_cfg.actions.joint_pos.clip = action_clip
@@ -257,12 +256,12 @@ def main():
         for name in vars(env_cfg.terminations):
             if not name.startswith("_"):
                 setattr(env_cfg.terminations, name, None)
-        agent_cfg = load_cfg_from_registry(TASK, "rsl_rl_cfg_entry_point")
+        agent_cfg = load_cfg_from_registry(task, "rsl_rl_cfg_entry_point")
         rsl_version = installed_version("rsl-rl-lib")
         agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, rsl_version)
         agent_cfg.device = args.device
         agent_cfg.seed = args.seed
-        env = gym.make(TASK, cfg=env_cfg)
+        env = gym.make(task, cfg=env_cfg)
         env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
         runner_cfg = agent_cfg.to_dict()
         # Pass classes directly so the runner does not scan and import scripts.
@@ -325,7 +324,7 @@ def main():
                            "action_clipping": action_clip is not None,
                            "criterion": args.criterion or "all",
                            "evaluations": {evaluation.name: evaluation.summary() for evaluation in evaluations},
-                           "environment": environment_summary(raw, TASK, agent_cfg)}                           
+                           "environment": environment_summary(raw, task, agent_cfg)}                           
                 (destination / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
                 # save data for each evaluation
